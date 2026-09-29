@@ -1,0 +1,8 @@
+{
+  "name": "AgentShield Logger",
+  "description": "Universal Agent Activity Monitor & Safety Observer for OpenClaw, Hermes, and autonomous AI agents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
