@@ -214,9 +214,9 @@ export class PolicyEngine {
 
     // 3. Reverse Shells & Outbound Data Pipes
     const revShellPatterns = [
-      { regex: /\bnc\s+(?:-[a-zA-Z0-9]+\s+)+-e\s+\/bin\/(?:ba)?sh\b/i, reason: 'Reverse shell invocation via netcat (-e /bin/sh)', id: 'POL-EXEC-NC-REVSHELL' },
-      { regex: /\/dev\/tcp\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d+/i, reason: 'Direct bash network socket redirection (/dev/tcp)', id: 'POL-EXEC-DEV-TCP' },
-      { regex: /(?:curl|wget)\s+[^\n|;]+\|\s*(?:ba)?sh/i, reason: 'Remote script execution piped into shell (curl | bash)', id: 'POL-EXEC-CURL-PIPE-SH' },
+      { regex: /\bnc(?:\.traditional)?\s+.*-e\s+(?:\/bin\/)?(?:ba)?sh\b/i, reason: 'Reverse shell invocation via netcat (-e /bin/sh)', id: 'POL-EXEC-NC-REVSHELL' },
+      { regex: /\/dev\/(?:tcp|udp)\/[0-9a-zA-Z._-]+\/\d+/i, reason: 'Direct bash network socket redirection (/dev/tcp)', id: 'POL-EXEC-DEV-TCP' },
+      { regex: /(?:curl|wget)\s+[^\n|;]+\|\s*(?:ba)?sh\b/i, reason: 'Remote script execution piped into shell (curl | bash)', id: 'POL-EXEC-CURL-PIPE-SH' },
     ];
 
     for (const pat of revShellPatterns) {

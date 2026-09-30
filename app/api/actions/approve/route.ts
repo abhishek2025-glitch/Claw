@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { approvalManager } from '@/lib/approval/manager';
 import { eventStore } from '@/lib/storage/event-store';
+import { verifyBearerToken } from '@/lib/policy/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const secret = process.env.WEBHOOK_SECRET || process.env.AGENTSHIELD_SECRET;
 
-    if (secret && authHeader !== `Bearer ${secret}`) {
+    if (!verifyBearerToken(authHeader, secret)) {
       // In production, approving sensitive actions requires operator authentication
       return NextResponse.json({ error: 'Unauthorized operator' }, { status: 401 });
     }

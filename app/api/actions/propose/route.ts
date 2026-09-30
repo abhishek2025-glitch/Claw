@@ -4,6 +4,7 @@ import { policyEngine } from '@/lib/policy/engine';
 import { approvalManager } from '@/lib/approval/manager';
 import { eventStore } from '@/lib/storage/event-store';
 import { metricsCollector } from '@/lib/metrics';
+import { verifyBearerToken } from '@/lib/policy/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const secret = process.env.WEBHOOK_SECRET || process.env.AGENTSHIELD_SECRET;
 
-    if (secret && authHeader !== `Bearer ${secret}`) {
+    if (!verifyBearerToken(authHeader, secret)) {
       return NextResponse.json({ error: 'Unauthorized: invalid bearer token' }, { status: 401 });
     }
 

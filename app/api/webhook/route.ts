@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eventStore } from '@/lib/storage/event-store';
 import { redactSecrets } from '@/lib/policy/redact';
 import { SecurityEvent, ActionType, LogLevel } from '@/lib/types/action';
+import { verifyBearerToken } from '@/lib/policy/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest) {
     const configuredSecret = process.env.WEBHOOK_SECRET || process.env.AGENTSHIELD_SECRET;
 
     // Check bearer token if configured
-    if (configuredSecret && authHeader !== `Bearer ${configuredSecret}`) {
+    if (!verifyBearerToken(authHeader, configuredSecret)) {
       return NextResponse.json({ error: 'Unauthorized: invalid bearer token' }, { status: 401 });
     }
 
