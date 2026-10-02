@@ -8,6 +8,17 @@ import { verifyBearerToken } from '@/lib/policy/auth';
 
 export const dynamic = 'force-dynamic';
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-AgentShield-Secret, X-Agent-Id',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -60,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     let pendingEntry = null;
     if (policy.decision === 'REQUIRE_APPROVAL') {
-      pendingEntry = approvalManager.registerPendingAction(request, policy.reasons);
+      pendingEntry = await approvalManager.registerPendingAction(request, policy.reasons);
     }
 
     // Record Event to Durable Store (Async)

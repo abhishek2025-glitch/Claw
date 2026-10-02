@@ -1,0 +1,100 @@
+{
+  "users": [
+    {
+      "id": "user-admin",
+      "email": "admin@agentshield.local",
+      "passwordHash": "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec",
+      "name": "Security Admin",
+      "role": "OWNER",
+      "organizationId": "org-default",
+      "createdAt": "2026-10-01T07:47:26.791Z"
+    }
+  ],
+  "organizations": [
+    {
+      "id": "org-default",
+      "name": "Default Workspace",
+      "slug": "default",
+      "ownerId": "user-admin",
+      "createdAt": "2026-10-01T07:47:26.791Z"
+    }
+  ],
+  "organizationMembers": [
+    {
+      "id": "mem-1",
+      "organizationId": "org-default",
+      "userId": "user-admin",
+      "role": "OWNER",
+      "createdAt": "2026-10-01T07:47:26.791Z"
+    }
+  ],
+  "licenses": [],
+  "licenseActivations": [],
+  "devices": [],
+  "agents": [],
+  "policies": [
+    {
+      "id": "pol-default",
+      "organizationId": "org-default",
+      "version": "1.0.0",
+      "rulesJson": "{\"policyFailureMode\":\"CLOSED\",\"telemetryFailureMode\":\"OPEN\",\"workspaceRoot\":\"/app/applet\",\"allowedDomains\":[\"google.com\",\"github.com\",\"api.github.com\",\"registry.npmjs.org\",\"pypi.org\"],\"blockedDomains\":[\"pastebin.com\",\"ghostbin.com\",\"tempmail.com\",\"ngrok.io\",\"serveo.net\"],\"allowedHttpPorts\":[80,443],\"blockedHttpPorts\":[21,22,23,25,135,139,445,1433,1521,3306,5432,6379,8080,9200,27017]}",
+      "isActive": true,
+      "createdAt": "2026-10-01T07:47:26.791Z"
+    }
+  ],
+  "actions": [
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-01T07:47:26.791Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "b601c5c9-b896-4da9-9e8d-334d42fe4229"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-01T07:47:41.249Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "5664e237-184a-4fd1-b24e-8b20ffdd67e1"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-01T07:47:58.983Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "f0f3f48d-bb10-4e1f-81b9-c58b59dddb6a"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-01T07:48:15.696Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "5065823e-460e-498e-bae2-11db16e477cb"
+    }
+  ],
+  "approvals": [],
+  "auditEvents": [],
+  "webhookEvents": [],
+  "orders": [],
+  "entitlements": []
+}

@@ -34,7 +34,7 @@ function CodeBlock({ code, language = 'bash' }: { code: string; language?: strin
 }
 
 export function DeployGuideModal({ onClose }: DeployGuideModalProps) {
-  const [activeTab, setActiveTab] = useState<'docker' | 'aws' | 'gcp' | 'azure' | 'vercel'>('docker');
+  const [activeTab, setActiveTab] = useState<'vercel' | 'cli' | 'docker' | 'aws' | 'gcp' | 'azure'>('vercel');
 
   return (
     <div className="fixed inset-0 bg-gray-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
@@ -46,7 +46,7 @@ export function DeployGuideModal({ onClose }: DeployGuideModalProps) {
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">Production Deployment Guide</h2>
-              <p className="text-xs text-gray-500 font-medium mt-0.5">Fully researched, enterprise-grade deployment strategies</p>
+              <p className="text-xs text-gray-500 font-medium mt-0.5">Commercial Vercel production deployment &amp; local agent CLI connectivity</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
@@ -58,7 +58,28 @@ export function DeployGuideModal({ onClose }: DeployGuideModalProps) {
           {/* Sidebar Tabs */}
           <div className="w-full md:w-64 bg-gray-50 border-r border-gray-200 p-4 space-y-1 flex-shrink-0 overflow-y-auto">
             
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-2 px-2">Foundation</div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-2 px-2">Production Cloud</div>
+            <button
+              onClick={() => setActiveTab('vercel')}
+              className={`flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+                activeTab === 'vercel' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <Globe className="w-4 h-4 text-emerald-600" /> Vercel (Production)
+              </span>
+              <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-mono font-bold">TOP</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('cli')}
+              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+                activeTab === 'cli' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <Terminal className="w-4 h-4 text-blue-600" /> CLI &amp; Agent Machine
+            </button>
+
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6 px-2">Containers &amp; VPS</div>
             <button
               onClick={() => setActiveTab('docker')}
               className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
@@ -67,8 +88,6 @@ export function DeployGuideModal({ onClose }: DeployGuideModalProps) {
             >
               <Box className="w-4 h-4" /> Docker (Base)
             </button>
-
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6 px-2">Cloud Providers</div>
             <button
               onClick={() => setActiveTab('aws')}
               className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
@@ -92,16 +111,6 @@ export function DeployGuideModal({ onClose }: DeployGuideModalProps) {
               }`}
             >
               <LayoutTemplate className="w-4 h-4" /> Azure Container Apps
-            </button>
-
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6 px-2">Web Platforms</div>
-            <button
-              onClick={() => setActiveTab('vercel')}
-              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-                activeTab === 'vercel' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <Globe className="w-4 h-4" /> Vercel / Netlify
             </button>
           </div>
 
@@ -356,39 +365,60 @@ az containerapp create \\
             {activeTab === 'vercel' && (
               <div className="space-y-6 animate-in fade-in">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Vercel & Netlify</h3>
-                  <p className="text-gray-600 text-sm">Vercel is the creator of Next.js and provides a zero-configuration deployment experience for serverless React applications. Because serverless environments lack persistent file systems, AgentShield MUST be set to <strong>Web / Webhook mode</strong> in the environment setup.</p>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 mb-2">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" /> Recommended Commercial Production Target
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Vercel Production Deployment</h3>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    Deploy AgentShield to Vercel for zero-maintenance, global edge availability. The platform automatically deploys Next.js API route handlers to serverless lambdas with pre-configured cross-origin CORS headers, ready to receive telemetry from autonomous AI agents running anywhere in the world.
+                  </p>
                 </div>
 
                 <div className="space-y-6">
                   <div>
-                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">1. Prepare Repository</h4>
-                    <p className="text-sm text-gray-600">Commit your code and push it to a GitHub, GitLab, or Bitbucket repository. Open the Vercel Dashboard, click &quot;Add New...&quot;, select Project, and import your repository.</p>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">Option A: Deploy via Vercel CLI (Instant)</h4>
+                    <p className="text-sm text-gray-600 mb-2">Run from the root directory on your development machine:</p>
+                    <CodeBlock 
+                      language="bash"
+                      code={`# 1. Install or update the Vercel CLI
+npm i -g vercel
+
+# 2. Deploy directly to production
+vercel --prod`} />
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">2. Environment Variables Configuration</h4>
-                    <p className="text-sm text-gray-600 mb-2">In the deployment configuration screen on Vercel, expand the &quot;Environment Variables&quot; section and add the following:</p>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">Option B: Git-Connected Continuous Deployment</h4>
+                    <p className="text-sm text-gray-600 mb-2">Push your codebase to GitHub, GitLab, or Bitbucket. Import the repository in your Vercel Dashboard with zero configuration overrides (Framework preset: Next.js).</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">Environment Variables</h4>
+                    <p className="text-sm text-gray-600 mb-2">In the Vercel Project Settings &gt; Environment Variables, configure the following keys:</p>
                     <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
                       <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
                         <thead className="bg-gray-100">
                           <tr>
-                            <th className="px-4 py-2 font-semibold text-gray-700">Key Name</th>
+                            <th className="px-4 py-2 font-semibold text-gray-700">Variable</th>
+                            <th className="px-4 py-2 font-semibold text-gray-700">Recommended Value</th>
                             <th className="px-4 py-2 font-semibold text-gray-700">Description</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 bg-white">
                           <tr>
-                            <td className="px-4 py-3 font-mono text-xs text-gray-800">AGENTSHIELD_MODE</td>
-                            <td className="px-4 py-3 text-gray-600">Must be set to <code className="bg-gray-100 px-1">web</code> to enable webhook receivers instead of local file system tailing.</td>
+                            <td className="px-4 py-3 font-mono text-xs text-gray-800 font-bold">WEBHOOK_SECRET</td>
+                            <td className="px-4 py-3 font-mono text-xs text-emerald-700">sec_prod_live_948f</td>
+                            <td className="px-4 py-3 text-gray-600 text-xs">Bearer authentication token required for incoming agent telemetry and action proposals.</td>
                           </tr>
                           <tr>
-                            <td className="px-4 py-3 font-mono text-xs text-gray-800">WEBHOOK_SECRET</td>
-                            <td className="px-4 py-3 text-gray-600">A secure random string (e.g., UUID) used to authenticate incoming webhook payloads from your agent.</td>
+                            <td className="px-4 py-3 font-mono text-xs text-gray-800 font-bold">POLICY_FAILURE_MODE</td>
+                            <td className="px-4 py-3 font-mono text-xs text-slate-700">CLOSED</td>
+                            <td className="px-4 py-3 text-gray-600 text-xs">Enforces fail-closed deterministic policy gating if policy engine is unreachable.</td>
                           </tr>
                           <tr>
-                            <td className="px-4 py-3 font-mono text-xs text-gray-800">NEXT_PUBLIC_COST_PER_MILLION</td>
-                            <td className="px-4 py-3 text-gray-600">Default fallback token price (e.g., <code className="bg-gray-100 px-1">0.50</code>).</td>
+                            <td className="px-4 py-3 font-mono text-xs text-gray-800 font-bold">NEXT_PUBLIC_COST_PER_MILLION</td>
+                            <td className="px-4 py-3 font-mono text-xs text-slate-700">0.50</td>
+                            <td className="px-4 py-3 text-gray-600 text-xs">FinOps token pricing calculation rate per 1,000,000 tokens.</td>
                           </tr>
                         </tbody>
                       </table>
@@ -396,21 +426,64 @@ az containerapp create \\
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">3. Agent Integration</h4>
-                    <p className="text-sm text-gray-600 mb-2">Once deployed, take your project URL (e.g., <code className="bg-gray-100 px-1">https://agentshield-app.vercel.app</code>) and configure your OpenClaw, Hermes, or custom agent to send POST JSON requests to the webhook route:</p>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">Serverless Storage Architecture</h4>
+                    <p className="text-sm text-gray-600">
+                      In Vercel serverless environments, AgentShield writes audit records to <code className="bg-gray-100 px-1 font-mono text-xs">/tmp/.agentshield/audit-events.jsonl</code> with an in-memory hot cache, preventing read-only filesystem errors. All API routes include universal CORS headers (<code className="bg-gray-100 px-1 font-mono text-xs">Access-Control-Allow-Origin: *</code>) to seamlessly receive payloads from external agent machines.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'cli' && (
+              <div className="space-y-6 animate-in fade-in">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">CLI &amp; Local/Cloud Agent Execution</h3>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    Once your AgentShield web app is live on Vercel, developers and customers can run autonomous AI agents anywhere—on local laptops, EC2 instances, Kubernetes pods, or cloud VMs—and wrap them with real-time safety guardrails.
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">1. Run via NPX (Zero Install)</h4>
+                    <p className="text-sm text-gray-600 mb-2">Wrap any AI agent process in real time:</p>
                     <CodeBlock 
                       language="bash"
-                      code={`POST https://agentshield-app.vercel.app/api/webhook
-Content-Type: application/json
-Authorization: Bearer YOUR_WEBHOOK_SECRET
+                      code={`# Wrap a Python agent process
+npx agentshield wrap \\
+  --endpoint https://your-shield.vercel.app \\
+  --secret YOUR_WEBHOOK_SECRET \\
+  --agent "Hermes-Production" \\
+  -- python agent.py
 
-{
-  "agentName": "Hermes 3",
-  "action": "EXEC",
-  "level": "WARN",
-  "message": "Executed command: npm run build",
-  "tokens": 150
-}`} />
+# Wrap an OpenClaw or AutoGPT tool loop with strict guardrails
+npx agentshield wrap \\
+  --endpoint https://your-shield.vercel.app \\
+  --secret YOUR_WEBHOOK_SECRET \\
+  --mode strict \\
+  -- npx openclaw run`} />
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">2. Verify Live Connection</h4>
+                    <p className="text-sm text-gray-600 mb-2">Test that your local machine can reach and authenticate with your Vercel instance:</p>
+                    <CodeBlock 
+                      language="bash"
+                      code={`npx agentshield test-connection \\
+  --endpoint https://your-shield.vercel.app \\
+  --secret YOUR_WEBHOOK_SECRET`} />
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-2 text-sm border-b pb-1">3. One-Line Curl Installer for Cloud VMs</h4>
+                    <p className="text-sm text-gray-600 mb-2">Run from AWS EC2, GCP Compute Engine, or Docker init scripts:</p>
+                    <CodeBlock 
+                      language="bash"
+                      code={`curl -sSL https://your-shield.vercel.app/api/cli/install.sh | bash -s -- wrap \\
+  --endpoint https://your-shield.vercel.app \\
+  --secret YOUR_WEBHOOK_SECRET \\
+  -- python3 my_agent.py`} />
                   </div>
                 </div>
               </div>

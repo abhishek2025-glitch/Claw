@@ -461,8 +461,21 @@ export function AgentsView({
       )}
 
       {/* Agents Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {agents.map((agent) => {
+      {agents.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center max-w-xl mx-auto space-y-4 shadow-xs">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+            <Bot className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-gray-900">No Live Agents Connected</h3>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              Run <code className="bg-slate-100 px-2 py-0.5 rounded font-mono text-gray-800">agentshield run -- openclaw</code> on your computer to connect OpenClaw or an autonomous agent to this dashboard, or click &quot;Add Custom Agent&quot; above.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {agents.map((agent) => {
           const healthStatus = agent.health?.status || 'unknown';
           const isHealthy = healthStatus === 'healthy';
           const isDegraded = healthStatus === 'degraded';
@@ -627,6 +640,7 @@ export function AgentsView({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

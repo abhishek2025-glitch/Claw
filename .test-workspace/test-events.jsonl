@@ -1,0 +1,1 @@
+{"eventId":"prod-ev-1","correlationId":"corr-prod","timestamp":"2026-10-01T07:48:15.730Z","eventType":"ACTION_ALLOWED","action":"EXEC","level":"INFO","message":"Prod event 1","agentId":"agent-1","environment":"production"}

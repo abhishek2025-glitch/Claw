@@ -37,7 +37,10 @@ export class DurableEventStore implements IEventStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(customPath?: string) {
-    const defaultDir = process.env.EVENT_STORE_DIR || path.join(process.cwd(), '.agentshield');
+    const isVercel = Boolean(process.env.VERCEL);
+    const defaultDir =
+      process.env.EVENT_STORE_DIR ||
+      (isVercel ? '/tmp/.agentshield' : path.join(process.cwd(), '.agentshield'));
     this.filePath = customPath || path.join(defaultDir, 'audit-events.jsonl');
   }
 

@@ -5,6 +5,17 @@ import { verifyBearerToken } from '@/lib/policy/auth';
 
 export const dynamic = 'force-dynamic';
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-AgentShield-Secret',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -25,16 +36,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const outcome = approvalManager.decideAction(
+    const organizationId = body.organizationId || 'org-default';
+
+    const outcome = await approvalManager.decideAndExecuteAction(
       actionId,
       decision,
       operatorId || 'operator-admin',
+      organizationId,
       operatorComment,
       currentActionRequest
     );
 
-    if (!outcome.success) {
-      return NextResponse.json({ error: outcome.error }, { status: 400 });
+    if (!outcome.success && outcome.status !== 'REJECTED') {
+      return NextResponse.json({ error: outcome.error, status: outcome.status }, { status: 400 });
     }
 
     // Record immutable audit event
@@ -53,12 +67,16 @@ export async function POST(req: NextRequest) {
       environment: pending?.request.environment || 'production',
       metadata: {
         approval: outcome.approval,
+        executionResult: outcome.executionResult,
+        status: outcome.status,
       },
     }).catch((e) => console.error('[Approve] EventStore error:', e));
 
     return NextResponse.json({
-      success: true,
+      success: outcome.success,
+      status: outcome.status,
       approval: outcome.approval,
+      executionResult: outcome.executionResult,
     });
   } catch (err: any) {
     console.error('Approval endpoint error:', err);

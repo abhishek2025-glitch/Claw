@@ -16,6 +16,7 @@ import Link from 'next/link';
 export function Sidebar({
   onOpenDeployGuide,
   onOpenUpgrade,
+  onOpenConnectCli,
   activeView,
   setActiveView,
   onOpenSettings,
@@ -24,6 +25,7 @@ export function Sidebar({
 }: {
   onOpenDeployGuide: () => void;
   onOpenUpgrade: () => void;
+  onOpenConnectCli?: () => void;
   activeView: 'dashboard' | 'logs' | 'alerts' | 'agents';
   setActiveView: (view: 'dashboard' | 'logs' | 'alerts' | 'agents') => void;
   onOpenSettings: () => void;
@@ -156,6 +158,15 @@ export function Sidebar({
         <div className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
           Integration
         </div>
+        {onOpenConnectCli && (
+          <button
+            onClick={onOpenConnectCli}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-slate-900 rounded-md transition-colors font-medium"
+          >
+            <Radio className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Connect Agent (CLI)</span>
+          </button>
+        )}
         <button
           onClick={onOpenDeployGuide}
           className="w-full flex items-center gap-2.5 px-3 py-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-900 rounded-md transition-colors"

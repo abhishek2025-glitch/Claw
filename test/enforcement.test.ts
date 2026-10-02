@@ -181,7 +181,7 @@ test('10. Cryptographic Action Hashing prevents tampering in approvals', async (
     requestedAt: new Date().toISOString(),
   };
 
-  const entry = approvalMgr.registerPendingAction(originalReq, ['Safe test inspection']);
+  const entry = await approvalMgr.registerPendingAction(originalReq, ['Safe test inspection']);
   assert.ok(entry.actionHash);
 
   // Attempt to approve a tampered action (attacker modified command to 'rm -rf /')
@@ -190,7 +190,7 @@ test('10. Cryptographic Action Hashing prevents tampering in approvals', async (
     operation: 'rm -rf /',
   };
 
-  const result = approvalMgr.decideAction(
+  const result = await approvalMgr.decideAction(
     originalReq.id,
     'APPROVED',
     'operator-1',
@@ -202,7 +202,7 @@ test('10. Cryptographic Action Hashing prevents tampering in approvals', async (
   assert.ok(result.error?.includes('Tampering detected'));
 
   // Now verify legitimate un-tampered action succeeds
-  const legitResult = approvalMgr.decideAction(
+  const legitResult = await approvalMgr.decideAction(
     originalReq.id,
     'APPROVED',
     'operator-1',
@@ -363,5 +363,44 @@ test('16. Reverse Shell & Command Substitution Traps evaluate to DENY', async ()
     assert.equal(decision.risk, 'CRITICAL');
   }
 });
+
+test('17. DurableEventStore accommodates Vercel serverless environment paths', async () => {
+  const originalVercel = process.env.VERCEL;
+  process.env.VERCEL = '1';
+  try {
+    const vercelStore = new DurableEventStore();
+    // In Vercel mode, it initializes without throwing read-only filesystem errors
+    await vercelStore.append({
+      eventId: `ev-vercel-${Date.now()}`,
+      correlationId: 'corr-vercel',
+      timestamp: new Date().toISOString(),
+      eventType: 'TELEMETRY_LOG',
+      action: 'THINK',
+      level: 'INFO',
+      message: 'Vercel serverless persistence test',
+      agentId: 'agent-vercel',
+      agentName: 'Vercel Agent',
+      environment: 'simulation',
+      decision: 'ALLOW',
+      risk: 'LOW',
+    });
+    const retrieved = await vercelStore.getRecent(10, { environment: 'simulation' });
+    assert.ok(retrieved.length > 0);
+  } finally {
+    if (originalVercel !== undefined) {
+      process.env.VERCEL = originalVercel;
+    } else {
+      delete process.env.VERCEL;
+    }
+  }
+});
+
+test('18. AgentShield CLI binary exists and is executable', async () => {
+  const cliPath = path.join(process.cwd(), 'bin', 'agentshield.mjs');
+  assert.ok(fs.existsSync(cliPath), 'CLI binary must exist in bin/agentshield.mjs');
+  const stat = fs.statSync(cliPath);
+  assert.ok(stat.isFile(), 'bin/agentshield.mjs must be a regular file');
+});
+
 
 

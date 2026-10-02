@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 import { eventStore } from '@/lib/storage/event-store';
 import { redactSecrets } from '@/lib/policy/redact';
 import { SecurityEvent, ActionType, LogLevel } from '@/lib/types/action';
 import { verifyBearerToken } from '@/lib/policy/auth';
 
 export const dynamic = 'force-dynamic';
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-AgentShield-Secret, X-Agent-Id',
+    },
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,6 +101,29 @@ export async function POST(req: NextRequest) {
 
     // Durable append (Non-blocking response)
     await eventStore.append(securityEvent);
+
+    const orgId = body.organizationId || 'org-default';
+    db.upsertAgent(orgId, {
+      agentId: securityEvent.agentId,
+      name: securityEvent.agentName || securityEvent.agentId || 'Agent',
+      framework: body.framework || 'Autonomous Agent',
+    }).catch(() => {});
+
+    db.appendAuditEvent({
+      organizationId: orgId,
+      eventId,
+      actionId: securityEvent.actionId,
+      correlationId,
+      timestamp: securityEvent.timestamp,
+      eventType: securityEvent.eventType,
+      action: securityEvent.action,
+      level: securityEvent.level,
+      message: securityEvent.message,
+      tokens: tokenCount,
+      risk: derivedRisk,
+      decision: securityEvent.decision || 'ALLOW',
+      metadataJson: JSON.stringify(securityEvent.metadata || {}),
+    }).catch(() => {});
 
     return NextResponse.json(
       {
