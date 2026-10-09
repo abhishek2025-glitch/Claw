@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PolicyEngine } from '../lib/policy/engine.ts';
-import { ShellExecutor, PolicyDeniedError, ApprovalRequiredError } from '../lib/executors/index.ts';
-import { ApprovalManager } from '../lib/approval/manager.ts';
-import { DurableEventStore } from '../lib/storage/event-store.ts';
-import { redactSecrets } from '../lib/policy/redact.ts';
-import { ActionRequest, computeActionHash } from '../lib/types/action.ts';
+import { PolicyEngine } from '../lib/policy/engine';
+import { ShellExecutor, PolicyDeniedError, ApprovalRequiredError } from '../lib/executors';
+import { ApprovalManager } from '../lib/approval/manager';
+import { DurableEventStore } from '../lib/storage/event-store';
+import { redactSecrets } from '../lib/policy/redact';
+import { ActionRequest, computeActionHash } from '../lib/types/action';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -330,7 +330,7 @@ test('14. Obfuscated SSRF & IPv4-mapped IPv6 are blocked', async () => {
 });
 
 test('15. Constant-time Bearer Token Authentication verifies valid and rejects invalid tokens', async () => {
-  const { verifyBearerToken } = await import('../lib/policy/auth.ts');
+  const { verifyBearerToken } = await import('../lib/policy/auth');
   const secret = 'super-secret-key-12345';
 
   assert.equal(verifyBearerToken(`Bearer ${secret}`, secret), true);

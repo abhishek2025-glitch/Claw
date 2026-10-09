@@ -21,16 +21,16 @@ export default function Dashboard() {
   const [isMounted, setIsMounted] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [showConnectCli, setShowConnectCli] = useState(false);
-
-  useEffect(() => {
-    setTimeout(() => setIsMounted(true), 0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDeployGuide, setShowDeployGuide] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('payment') === 'success') {
-        setShowUpgrade(true);
-      }
+      return urlParams.get('payment') === 'success';
     }
-  }, []);
+    return false;
+  });
+  const [activeView, setActiveView] = useState<'dashboard' | 'logs' | 'alerts' | 'agents'>('dashboard');
 
   const [setupComplete, setSetupComplete] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -39,16 +39,7 @@ export default function Dashboard() {
     }
     return false;
   });
-  
-  const { agents, addAgent, removeAgent, toggleAgentStatus, updateAgentHealth } = useAgents();
-  const { logs, stats, clearLogs, pendingApprovals, approveAction, enforcementMode, refreshLogs } = useLogger(
-    false,
-    agents.filter((a) => a.status === 'active')
-  );
-  
-  const [showSettings, setShowSettings] = useState(false);
-  const [showDeployGuide, setShowDeployGuide] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
+
   const [costPer1M, setCostPer1M] = useState<number>(() => {
     if (typeof window !== 'undefined') {
       const savedCost = localStorage.getItem('agentshield_cost_per_1m') || localStorage.getItem('clawguard_cost_per_1m');
@@ -58,7 +49,17 @@ export default function Dashboard() {
     }
     return 0.50;
   });
-  const [activeView, setActiveView] = useState<'dashboard' | 'logs' | 'alerts' | 'agents'>('dashboard');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsMounted(true), 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const { agents, addAgent, removeAgent, toggleAgentStatus, updateAgentHealth } = useAgents();
+  const { logs, stats, clearLogs, pendingApprovals, approveAction, enforcementMode, refreshLogs } = useLogger(
+    false,
+    agents.filter((a) => a.status === 'active')
+  );
 
   const finishSetup = () => {
     if (typeof window !== 'undefined') {

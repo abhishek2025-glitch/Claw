@@ -153,16 +153,28 @@ export function useLogger(isDemoMode = false, activeAgents: Agent[] = []) {
   };
 
   useEffect(() => {
-    fetchLiveTelemetry();
-    fetchPendingApprovals();
-    fetchMetrics();
+    let isCancelled = false;
+
+    const timer = setTimeout(() => {
+      if (!isCancelled) {
+        fetchLiveTelemetry();
+        fetchPendingApprovals();
+        fetchMetrics();
+      }
+    }, 0);
 
     const interval = setInterval(() => {
-      fetchLiveTelemetry();
-      fetchPendingApprovals();
+      if (!isCancelled) {
+        fetchLiveTelemetry();
+        fetchPendingApprovals();
+      }
     }, 4000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [fetchLiveTelemetry, fetchPendingApprovals, fetchMetrics]);
 
   return {

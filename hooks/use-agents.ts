@@ -56,9 +56,25 @@ export function useAgents() {
   }, []);
 
   useEffect(() => {
-    fetchRealAgents();
-    const interval = setInterval(fetchRealAgents, 10000);
-    return () => clearInterval(interval);
+    let isCancelled = false;
+
+    const timer = setTimeout(() => {
+      if (!isCancelled) {
+        fetchRealAgents();
+      }
+    }, 0);
+
+    const interval = setInterval(() => {
+      if (!isCancelled) {
+        fetchRealAgents();
+      }
+    }, 10000);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [fetchRealAgents]);
 
   const addAgent = async (agent: Pick<Agent, 'name'> & { framework?: string; endpointUrl?: string }) => {

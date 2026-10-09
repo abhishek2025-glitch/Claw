@@ -90,6 +90,30 @@
       "requestedAt": "2026-10-01T07:48:15.696Z",
       "reasonsJson": "[\"Safe test inspection\"]",
       "id": "5065823e-460e-498e-bae2-11db16e477cb"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-09T11:17:41.324Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "c8a3a3d3-098d-427e-8494-c8524399e933"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-09T11:20:23.368Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "48f940db-305a-4fee-b935-ca74853ad4fd"
     }
   ],
   "approvals": [],
