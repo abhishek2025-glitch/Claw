@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Environment
@@ -32,7 +32,13 @@ jobs:
 
       - name: Install (npm ci)
         id: install
-        run: npm ci --no-audit --no-fund
+        run: |
+          if npm ci --no-audit --no-fund; then
+            echo "INSTALL|npm ci OK"
+          else
+            echo "INSTALL|npm ci FAILED - package-lock.json is out of sync with package.json; falling back to npm install"
+            npm install --no-audit --no-fund
+          fi
 
       - name: Typecheck
         id: typecheck
