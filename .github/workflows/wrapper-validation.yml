@@ -98,6 +98,63 @@ jobs:
           echo "SMOKE|server log tail:"
           tail -n 25 "$RUNNER_TEMP/server.log"
 
+      - name: Monetization-readiness probes (license and billing)
+        id: monetize
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set +e
+          cd "$GITHUB_WORKSPACE"
+          export NODE_ENV=production WEBHOOK_SECRET=ci-secret AGENTSHIELD_SECRET=ci-secret
+          unset DODO_WEBHOOK_SECRET LICENSE_SIGNING_PRIVATE_KEY DODO_PAYMENTS_API_KEY DODO_PAYMENTS_MODE
+
+          cat > "$RUNNER_TEMP/lic.mts" <<'EOF'
+          import fs from 'node:fs';
+          const m = await import(process.env.GITHUB_WORKSPACE + '/lib/license/index.ts');
+          const lic = m.issueSignedLicense({licenseId:'ci-1',plan:'PRO_LIFETIME',customerId:'ci@example.com',organizationId:'org-ci',issuedAt:new Date().toISOString(),maxDevices:5,features:['A']});
+          const sigBytes = Buffer.from(lic.signature,'base64url').length;
+          console.log('MONETIZE|issued_signature_bytes=' + sigBytes + ' (ed25519=64, hmac-sha256-fallback=32)');
+          const v = m.verifyLicenseOffline(lic.licenseKey);
+          console.log('MONETIZE|server_issued_license_verifies_with_embedded_public_key=' + v.valid + (v.error ? ' error=' + v.error : ''));
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/issued-key.txt', lic.licenseKey);
+          EOF
+          npx tsx "$RUNNER_TEMP/lic.mts" 2>&1 | tail -n 8
+
+          export HOME="$RUNNER_TEMP/h2"; mkdir -p "$HOME"
+          node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > "$RUNNER_TEMP/cli-activate.txt" 2>&1
+          echo "MONETIZE|cli_activate_with_server_issued_license_exit=$?"
+          sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/cli-activate.txt" | grep -E "Validated|Failed" | head -n 2
+
+          npx next start -p 3000 > "$RUNNER_TEMP/server2.log" 2>&1 &
+          PID=$!
+          for i in $(seq 1 40); do curl -s -o /dev/null 127.0.0.1:3000/ && break; sleep 1; done
+
+          cat > "$RUNNER_TEMP/forge.mjs" <<'EOF'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const base = 'http://127.0.0.1:3000';
+          const body = JSON.stringify({id:'evt_ci_forged_'+Date.now(),type:'payment.succeeded',created_at:new Date().toISOString(),data:{payment_id:'pay_ci',order_id:'ord_ci',customer:{email:'forger@example.com'},metadata:{organization_id:'org-ci'},total_amount:4900,currency:'USD',status:'succeeded'}});
+          const sig = crypto.createHmac('sha256','whsec_dodo_agentshield_live_942a').update(body).digest('hex');
+          const r = await fetch(base + '/api/billing/webhook/dodo',{method:'POST',headers:{'content-type':'application/json','webhook-signature':sig},body});
+          const j = await r.json().catch(() => ({}));
+          console.log('MONETIZE|forged_webhook_using_repo_default_secret_status=' + r.status + '|license_issued=' + Boolean(j.licenseKey) + '|message=' + (j.message || j.error));
+          if (j.licenseKey) {
+            const a = await fetch(base + '/api/licenses/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({licenseKey:j.licenseKey,deviceId:'ci-device-1',deviceName:'ci',os:'linux'})});
+            const aj = await a.json().catch(() => ({}));
+            console.log('MONETIZE|activate_forged_license_status=' + a.status + '|success=' + Boolean(aj.success) + (aj.error ? '|error=' + aj.error : ''));
+            const l = await fetch(base + '/api/licenses?orgId=org-ci');
+            const lt = await l.text();
+            console.log('MONETIZE|unauthenticated_GET_api_licenses_status=' + l.status + '|response_contains_license_key=' + lt.includes(j.licenseKey));
+          }
+          const bad = await fetch(base + '/api/billing/webhook/dodo',{method:'POST',headers:{'content-type':'application/json','webhook-signature':'deadbeef'},body});
+          console.log('MONETIZE|webhook_with_wrong_signature_status=' + bad.status);
+          const co = await fetch(base + '/api/billing/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customerEmail:'buyer@example.com',customerName:'Buyer'})});
+          const cj = await co.json().catch(() => ({}));
+          console.log('MONETIZE|checkout_status=' + co.status + '|response_keys=' + Object.keys(cj).join(',') + '|checkoutUrl_prefix=' + String(cj.checkoutUrl || '').slice(0,50));
+          EOF
+          node "$RUNNER_TEMP/forge.mjs" 2>&1 | tail -n 12
+          kill $PID 2>/dev/null
+
       - name: Wrapper CLI probes
         id: cli
         if: always()
@@ -194,5 +251,5 @@ jobs:
       - name: Gate
         if: always()
         run: |
-          echo "GATE|install=${{ steps.install.outcome }}|typecheck=${{ steps.typecheck.outcome }}|lint=${{ steps.lint.outcome }}|unit=${{ steps.unit.outcome }}|build=${{ steps.build.outcome }}|smoke=${{ steps.smoke.outcome }}|cli=${{ steps.cli.outcome }}|pack=${{ steps.pack.outcome }}|hygiene=${{ steps.hygiene.outcome }}"
+          echo "GATE|install=${{ steps.install.outcome }}|typecheck=${{ steps.typecheck.outcome }}|lint=${{ steps.lint.outcome }}|unit=${{ steps.unit.outcome }}|build=${{ steps.build.outcome }}|smoke=${{ steps.smoke.outcome }}|cli=${{ steps.cli.outcome }}|pack=${{ steps.pack.outcome }}|hygiene=${{ steps.hygiene.outcome }}|monetize=${{ steps.monetize.outcome }}"
           [ "${{ steps.install.outcome }}" = "success" ] && [ "${{ steps.typecheck.outcome }}" = "success" ] && [ "${{ steps.unit.outcome }}" = "success" ] && [ "${{ steps.build.outcome }}" = "success" ]
