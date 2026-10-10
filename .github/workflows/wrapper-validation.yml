@@ -1,0 +1,192 @@
+name: Wrapper Validation
+
+on:
+  push:
+    branches: [ci/wrapper-validation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  validate:
+    name: Build and wrapper validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Environment
+        run: |
+          node -v && npm -v && python3 --version
+          git log -1 --oneline
+          echo "files tracked: $(git ls-files | wc -l)"
+
+      - name: Install (npm ci)
+        id: install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        id: typecheck
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run typecheck
+
+      - name: Lint
+        id: lint
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Unit tests (enforcement suite)
+        id: unit
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm test
+
+      - name: Next.js production build
+        id: build
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        env:
+          WEBHOOK_SECRET: ci-dummy-secret
+          AGENTSHIELD_SECRET: ci-dummy-secret
+        run: npm run build
+
+      - name: Server smoke test (built app)
+        id: smoke
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set +e
+          export NODE_ENV=production WEBHOOK_SECRET=ci-secret AGENTSHIELD_SECRET=ci-secret
+          npx next start -p 3000 > "$RUNNER_TEMP/server.log" 2>&1 &
+          PID=$!
+          for i in $(seq 1 40); do curl -s -o /dev/null 127.0.0.1:3000/ && break; sleep 1; done
+          req() {
+            local label="$1"; shift
+            local out; out=$(curl -s -m 15 -w '\nHTTP_STATUS=%{http_code}' "$@")
+            echo "SMOKE|$label|$(echo "$out" | tail -n 1)|$(echo "$out" | head -n -1 | head -c 220 | tr '\n' ' ')"
+          }
+          H='content-type: application/json'
+          req "GET /" 127.0.0.1:3000/
+          req "GET /api/metrics" 127.0.0.1:3000/api/metrics
+          req "GET /api/agents" 127.0.0.1:3000/api/agents
+          req "GET /api/actions/pending" 127.0.0.1:3000/api/actions/pending
+          req "GET /api/licenses" 127.0.0.1:3000/api/licenses
+          req "GET /api/auth/me" 127.0.0.1:3000/api/auth/me
+          req "GET /api/cli/install.sh" 127.0.0.1:3000/api/cli/install.sh
+          req "POST /api/webhook (no auth)" -X POST -H "$H" -d '{}' 127.0.0.1:3000/api/webhook
+          req "POST /api/actions/propose (no auth)" -X POST -H "$H" -d '{}' 127.0.0.1:3000/api/actions/propose
+          req "POST /api/actions/approve (no auth)" -X POST -H "$H" -d '{"actionId":"nonexistent"}' 127.0.0.1:3000/api/actions/approve
+          req "POST /api/agents/ping (no auth)" -X POST -H "$H" -d '{}' 127.0.0.1:3000/api/agents/ping
+          kill $PID 2>/dev/null
+          echo "SMOKE|server log tail:"
+          tail -n 25 "$RUNNER_TEMP/server.log"
+
+      - name: Wrapper CLI probes
+        id: cli
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          cd "$GITHUB_WORKSPACE"
+          export HOME="$RUNNER_TEMP/clihome"; mkdir -p "$HOME"
+          CLI="node $GITHUB_WORKSPACE/bin/agentshield.mjs"
+          probe() {
+            local name="$1"; shift
+            echo "::group::PROBE $name"
+            timeout 60 "$@" < /dev/null 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -n 45
+            local rc=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            echo "PROBE_RESULT|$name|exit=$rc"
+          }
+          probe "version" $CLI version
+          probe "help" $CLI help
+          probe "init" $CLI init
+          probe "doctor" $CLI doctor
+          probe "policy" $CLI policy
+          probe "policy-validate" $CLI policy validate
+          probe "status" $CLI status
+          probe "wrap-clean-agent" $CLI wrap -- node -e "console.log('hello from agent')"
+          probe "wrap-rm-rf-fast-exit" $CLI wrap -- node -e "console.log('rm -rf /')"
+          probe "wrap-sudo-then-continues" $CLI wrap -- node -e "console.log('sudo ls /root'); setTimeout(function(){console.log('AGENT STILL RUNNING AFTER GUARDRAIL')},3000)"
+          probe "wrap-false-positive-devnull" $CLI wrap -- node -e "console.log('discarding noise with > /dev/null is harmless')"
+          probe "wrap-flags-parsed" $CLI wrap --mode permissive --endpoint https://example.invalid --secret x --agent Probe -- node -e "console.log('hello')"
+          probe "test-connection" $CLI test-connection
+
+          echo "::group::PROBE silent-action-outside-workspace"
+          rm -f "$RUNNER_TEMP/outside-marker"
+          timeout 60 $CLI wrap -- node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP+'/outside-marker','x');console.log('agent finished')" < /dev/null 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -n 20
+          if [ -f "$RUNNER_TEMP/outside-marker" ]; then echo "PROBE_RESULT|silent-action-outside-workspace|NOT_BLOCKED (file written outside workspace)"; else echo "PROBE_RESULT|silent-action-outside-workspace|blocked"; fi
+          echo "::endgroup::"
+
+          PAYLOAD=$(node -e "process.stdout.write(Buffer.from(JSON.stringify({product:'agentshield',customerId:'ci',features:['all'],issuedAt:'2026-01-01T00:00:00Z',licenseId:'ci-1',maxDevices:1,organizationId:'ci',plan:'PRO_LIFETIME',version:1})).toString('base64url'))")
+          probe "license-bad-sig-plain" $CLI activate "ASL1-$PAYLOAD.notasignature"
+          probe "license-bad-sig-containing-live" $CLI activate "ASL1-$PAYLOAD.notasignature-live"
+          probe "license-bad-sig-containing-test" $CLI activate "ASL1-$PAYLOAD.notasignature-test"
+
+          node -e "
+          const fs=require('fs');const src=fs.readFileSync('bin/agentshield.mjs','utf8');
+          const m=src.match(/-----BEGIN PUBLIC KEY-----[\s\S]*?-----END PUBLIC KEY-----/);
+          try{const k=require('crypto').createPublicKey(m[0]);console.log('PROBE_RESULT|root-public-key-parse|ok type='+k.asymmetricKeyType)}catch(e){console.log('PROBE_RESULT|root-public-key-parse|INVALID '+e.message)}"
+          probe "logs" $CLI logs
+
+      - name: Package and consumer install
+        id: pack
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          cd "$GITHUB_WORKSPACE"
+          npm pack --json > "$RUNNER_TEMP/pack.json" 2> "$RUNNER_TEMP/pack.err"
+          echo "PACK|npm_pack_exit=$?"
+          node -e "
+          const p=require(process.env.RUNNER_TEMP+'/pack.json')[0];
+          console.log('PACK|file='+p.filename+'|size_bytes='+p.size+'|unpacked_bytes='+p.unpackedSize+'|files='+p.entryCount);
+          const paths=p.files.map(f=>f.path);
+          const internal=paths.filter(f=>/^(\.agentshield\/|\.test-workspace\/|\.env(?!\.example)|tsconfig\.tsbuildinfo|bun\.lock|test\/)/.test(f));
+          console.log('PACK|internal_or_runtime_files='+internal.length);
+          console.log(internal.join('\n'));
+          console.log('PACK|has_bin='+paths.includes('bin/agentshield.mjs'));
+          "
+          mkdir -p "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer" && npm init -y > /dev/null 2>&1
+          START=$(date +%s)
+          npm i "$GITHUB_WORKSPACE"/agentshield-*.tgz --no-audit --no-fund 2>&1 | tail -n 5
+          echo "PACK|consumer_install_seconds=$(( $(date +%s) - START ))"
+          echo "PACK|consumer_node_modules=$(du -sh node_modules | cut -f1) top_level_packages=$(ls node_modules | wc -l)"
+          npx --no-install agentshield version
+          echo "PACK|consumer_cli_exit=$?"
+          cd "$GITHUB_WORKSPACE"
+          python3 -m py_compile lib/sdk/python/agentshield_client.py lib/sdk/python/cli.py && echo "PACK|python_sdk_compile=ok" || echo "PACK|python_sdk_compile=FAILED"
+
+      - name: Repo hygiene and dependency audit
+        id: hygiene
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          cd "$GITHUB_WORKSPACE"
+          echo "HYGIENE|committed runtime/build artifacts:"
+          git ls-files | grep -E '^(\.agentshield/|\.test-workspace/)|tsbuildinfo$|(^|/)\.env$'
+          echo "HYGIENE|.gitignore:"; cat .gitignore
+          echo "HYGIENE|license file:"; ls LICENSE* 2>&1 | head -n 2
+          echo "HYGIENE|lockfiles:"; ls bun.lock package-lock.json
+          echo "HYGIENE|secret-like strings in tracked files (values redacted):"
+          git grep -nIE "sec_live_prod_[0-9a-f]+|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9]{20,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY" -- . ':!package-lock.json' ':!bun.lock' | sed -E 's/(:[0-9]+:).*/\1 [match redacted]/'
+          echo "HYGIENE|npm audit (prod deps, high and above):"
+          npm audit --omit=dev --audit-level=high 2>&1 | tail -n 30
+
+      - name: Gate
+        if: always()
+        run: |
+          echo "GATE|install=${{ steps.install.outcome }}|typecheck=${{ steps.typecheck.outcome }}|lint=${{ steps.lint.outcome }}|unit=${{ steps.unit.outcome }}|build=${{ steps.build.outcome }}|smoke=${{ steps.smoke.outcome }}|cli=${{ steps.cli.outcome }}|pack=${{ steps.pack.outcome }}|hygiene=${{ steps.hygiene.outcome }}"
+          [ "${{ steps.install.outcome }}" = "success" ] && [ "${{ steps.typecheck.outcome }}" = "success" ] && [ "${{ steps.unit.outcome }}" = "success" ] && [ "${{ steps.build.outcome }}" = "success" ]
