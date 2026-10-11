@@ -39,9 +39,18 @@ const c = {
 };
 
 // Embedded Public Verification Key for Offline License Verification (Ed25519)
+// Note: This must be replaced with the owner's own public key in production deployments.
 const AGENTSHIELD_ROOT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAiK3m+xZ9P9b2Y7uN8kC9aW0yF5vT3rQ8sM1nL2xP0k4=
 -----END PUBLIC KEY-----`;
+
+function getEffectivePublicKey(overridePem) {
+  if (overridePem) return overridePem;
+  if (process.env.AGENTSHIELD_LICENSE_PUBLIC_KEY) {
+    return process.env.AGENTSHIELD_LICENSE_PUBLIC_KEY.replace(/\\n/g, '\n');
+  }
+  return AGENTSHIELD_ROOT_PUBLIC_KEY;
+}
 
 // Local Config & Paths
 const HOME_DIR = os.homedir();
@@ -133,6 +142,9 @@ function verifyLicenseOffline(licenseKey) {
   } catch {
     return { valid: false, error: 'Failed to decode license payload' };
   }
+  if (!claims || typeof claims !== 'object' || !Array.isArray(claims.features)) {
+    return { valid: false, error: 'Malformed license claims' };
+  }
   if (claims.product !== 'agentshield') {
     return { valid: false, error: `Invalid product: ${claims.product}` };
   }
@@ -156,21 +168,17 @@ function verifyLicenseOffline(licenseKey) {
     'utf-8'
   );
 
+  const effectivePublicKey = getEffectivePublicKey();
   let isVerified = false;
   try {
     isVerified = crypto.verify(
       null,
       canonicalBytes,
-      AGENTSHIELD_ROOT_PUBLIC_KEY,
+      effectivePublicKey,
       Buffer.from(signature, 'base64url')
     );
   } catch {
     isVerified = false;
-  }
-
-  // Fallback dev token check
-  if (!isVerified && licenseKey.includes('test') || licenseKey.includes('live')) {
-    isVerified = true;
   }
 
   return { valid: isVerified, claims, error: isVerified ? undefined : 'Signature verification failed' };
@@ -561,6 +569,9 @@ async function runAgent(childCommand, mode = 'strict') {
     },
   });
 
+  let killedByGuardrail = false;
+  let guardrailRuleFired = '';
+
   const inspectLine = (line, isStderr = false) => {
     const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
     if (!cleanLine) return;
@@ -569,6 +580,8 @@ async function runAgent(childCommand, mode = 'strict') {
     for (const danger of DANGEROUS_PATTERNS) {
       if (danger.regex.test(cleanLine)) {
         blockedCount++;
+        killedByGuardrail = true;
+        guardrailRuleFired = danger.reason;
         console.error(`\n${c.bgRed} AGENTSHIELD GUARDRAIL TRIGGERED ${c.reset}`);
         console.error(`${c.red}${c.bold}Violation:${c.reset} ${danger.reason}`);
         console.error(`${c.red}${c.bold}Payload:${c.reset}   ${cleanLine}\n`);
@@ -580,7 +593,7 @@ async function runAgent(childCommand, mode = 'strict') {
         });
 
         if (mode === 'strict') {
-          console.error(`${c.red}[AgentShield STRICT] Halting agent process to prevent compromise.${c.reset}`);
+          console.error(`${c.red}[AgentShield STRICT] Halting agent process to prevent compromise (Rule: ${danger.reason}).${c.reset}`);
           child.kill('SIGTERM');
           setTimeout(() => child.kill('SIGKILL'), 1500);
           return;
@@ -613,15 +626,27 @@ async function runAgent(childCommand, mode = 'strict') {
   process.on('SIGINT', () => child.kill('SIGINT'));
   process.on('SIGTERM', () => child.kill('SIGTERM'));
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`\n${c.gray}────────────────────────────────────────────────────────────${c.reset}`);
     console.log(`${c.bold}AgentShield Session Completed:${c.reset}`);
     console.log(`  Duration:         ${elapsed}s`);
-    console.log(`  Exit Code:        ${code}`);
+    console.log(`  Exit Code:        ${code !== null ? code : 'null (' + signal + ')'}`);
     console.log(`  Security Blocks:  ${blockedCount === 0 ? c.green + '0 (Clean)' + c.reset : c.red + blockedCount + ' BLOCKED' + c.reset}`);
+    if (killedByGuardrail) {
+      console.log(`  Fired Rule:       ${c.red}${guardrailRuleFired}${c.reset}`);
+    }
     console.log(`${c.gray}────────────────────────────────────────────────────────────${c.reset}\n`);
-    process.exit(code || 0);
+
+    if (killedByGuardrail) {
+      process.exit(77);
+    }
+    if (signal) {
+      const signalNumbers = { SIGHUP: 1, SIGINT: 2, SIGQUIT: 3, SIGKILL: 9, SIGTERM: 15 };
+      const sigNum = signalNumbers[signal] || 15;
+      process.exit(128 + sigNum);
+    }
+    process.exit(code ?? 0);
   });
 }
 

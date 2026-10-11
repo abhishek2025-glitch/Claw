@@ -1,12 +1,30 @@
 import { timingSafeEqual } from 'node:crypto';
 
+let warnedUnconfiguredInDev = false;
+let warnedUnconfiguredInProd = false;
+
 /**
  * Constant-time bearer token verification to prevent timing side-channel attacks.
- * If expectedSecret is undefined or empty, returns true (allows development/unconfigured mode).
+ * In production (NODE_ENV === 'production'), if no secret is configured, fails closed (returns false).
+ * In development, unconfigured secret allows requests but logs a clear warning.
  */
 export function verifyBearerToken(authHeader: string | null, expectedSecret?: string): boolean {
+  const isProduction = process.env.NODE_ENV === 'production';
+
   if (!expectedSecret) {
-    return true; // Secret not configured in environment
+    if (isProduction) {
+      if (!warnedUnconfiguredInProd) {
+        console.error('[SECURITY WARNING] No bearer secret (WEBHOOK_SECRET/AGENTSHIELD_SECRET) configured in production. Protected routes fail closed.');
+        warnedUnconfiguredInProd = true;
+      }
+      return false; // Fail-closed in production
+    }
+
+    if (!warnedUnconfiguredInDev) {
+      console.warn('[SECURITY WARNING] No bearer secret configured. Authentication is open in development mode.');
+      warnedUnconfiguredInDev = true;
+    }
+    return true; // Open in development
   }
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -25,3 +43,4 @@ export function verifyBearerToken(authHeader: string | null, expectedSecret?: st
 
   return timingSafeEqual(tokenBuf, expectedBuf);
 }
+

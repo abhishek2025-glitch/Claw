@@ -1,7 +1,7 @@
 'use client';
 
 import { X, CheckCircle2, Zap, ShieldAlert, BarChart3, Star, ArrowRight, Copy, Check, Terminal, ExternalLink } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface UpgradeModalProps {
   onClose: () => void;
@@ -12,23 +12,12 @@ export function UpgradeModal({ onClose }: UpgradeModalProps) {
   const [customerName, setCustomerName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeLicense, setActiveLicense] = useState<string | null>(null);
   const [copiedLicense, setCopiedLicense] = useState(false);
+  // Note: License delivery to the customer (email or customer portal) is handled via backend webhook fulfillment.
+  // Anonymous client-side license polling is removed to prevent leaking customer keys.
+  const [activeLicense] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Check if organization already has an active license
-    fetch('/api/licenses')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.licenses && d.licenses.length > 0) {
-          const active = d.licenses.find((l: any) => l.status === 'ACTIVE');
-          if (active) {
-            setActiveLicense(active.licenseKey);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+
 
   const handleDodoCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
