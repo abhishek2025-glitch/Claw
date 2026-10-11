@@ -135,9 +135,9 @@ jobs:
           npx tsx "$RUNNER_TEMP/lic.mts" 2>&1 | grep -E "RETEST|Error" | head -n 6
 
           export HOME="$RUNNER_TEMP/h2"; mkdir -p "$HOME"
-          node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > /dev/null 2>&1
+          node packages/cli/bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > /dev/null 2>&1
           echo "RETEST|cli_activate_server_issued_license_with_matching_public_key|exit=$? (expect 0)"
-          env -u AGENTSHIELD_LICENSE_PUBLIC_KEY node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > /dev/null 2>&1
+          env -u AGENTSHIELD_LICENSE_PUBLIC_KEY node packages/cli/bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > /dev/null 2>&1
           echo "RETEST|cli_activate_same_license_with_embedded_default_key|exit=$? (expect non-zero, embedded key is not yours yet)"
 
           PORT=3101 npx next start -p 3101 > "$RUNNER_TEMP/server1.log" 2>&1 &
@@ -174,7 +174,7 @@ jobs:
           EOF
           node "$RUNNER_TEMP/chain.mjs" 2>&1 | grep -E "RETEST|Error" 
           if [ -f "$RUNNER_TEMP/chain-key.txt" ]; then
-            node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/chain-key.txt")" < /dev/null > /dev/null 2>&1
+            node packages/cli/bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/chain-key.txt")" < /dev/null > /dev/null 2>&1
             echo "RETEST|cli_activate_license_from_full_payment_chain|exit=$? (expect 0)"
           fi
           pkill -f "next start" 2>/dev/null; pkill -f "next-server" 2>/dev/null; sleep 3
@@ -200,7 +200,8 @@ jobs:
           set +e
           cd "$GITHUB_WORKSPACE"
           export HOME="$RUNNER_TEMP/clihome"; mkdir -p "$HOME"
-          CLI="node $GITHUB_WORKSPACE/bin/agentshield.mjs"
+          CLIF=packages/cli/bin/agentshield.mjs; export CLIF
+          CLI="node $GITHUB_WORKSPACE/$CLIF"
           probe() {
             local name="$1"; shift
             echo "::group::PROBE $name"
@@ -222,6 +223,11 @@ jobs:
           probe "wrap-false-positive-devnull" $CLI wrap -- node -e "console.log('discarding noise with > /dev/null is harmless')"
           probe "wrap-flags-parsed" $CLI wrap --mode permissive --endpoint https://example.invalid --secret x --agent Probe -- node -e "console.log('hello')"
           probe "test-connection" $CLI test-connection
+          probe "wrap-permissive-rm-rf" $CLI wrap --mode permissive -- node -e "console.log('rm -rf /'); setTimeout(function(){console.log('AGENT SURVIVED PERMISSIVE')},1500)"
+          mkdir -p "$RUNNER_TEMP/gate-probe-dir"
+          probe "gate-ls" $CLI gate -- ls
+          probe "gate-rm-rf" $CLI gate -- rm -rf "$RUNNER_TEMP/gate-probe-dir"
+          if [ -d "$RUNNER_TEMP/gate-probe-dir" ]; then echo "PROBE_RESULT|gate-rm-rf-dir-still-exists|yes"; else echo "PROBE_RESULT|gate-rm-rf-dir-still-exists|NO (deleted)"; fi
 
           echo "::group::PROBE silent-action-outside-workspace"
           rm -f "$RUNNER_TEMP/outside-marker"
@@ -235,7 +241,7 @@ jobs:
           probe "license-bad-sig-containing-test" $CLI activate "ASL1-$PAYLOAD.notasignature-test"
 
           node -e "
-          const fs=require('fs');const src=fs.readFileSync('bin/agentshield.mjs','utf8');
+          const fs=require('fs');const src=fs.readFileSync(process.env.CLIF,'utf8');
           const m=src.match(/-----BEGIN PUBLIC KEY-----[\s\S]*?-----END PUBLIC KEY-----/);
           try{const k=require('crypto').createPublicKey(m[0]);console.log('PROBE_RESULT|root-public-key-parse|ok type='+k.asymmetricKeyType)}catch(e){console.log('PROBE_RESULT|root-public-key-parse|INVALID '+e.message)}"
           probe "logs" $CLI logs
@@ -246,21 +252,17 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          cd "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE/packages/cli" || exit 0
           npm pack --json > "$RUNNER_TEMP/pack.json" 2> "$RUNNER_TEMP/pack.err"
           echo "PACK|npm_pack_exit=$?"
           node -e "
           const p=require(process.env.RUNNER_TEMP+'/pack.json')[0];
           console.log('PACK|file='+p.filename+'|size_bytes='+p.size+'|unpacked_bytes='+p.unpackedSize+'|files='+p.entryCount);
-          const paths=p.files.map(f=>f.path);
-          const internal=paths.filter(f=>/^(\.agentshield\/|\.test-workspace\/|\.env(?!\.example)|tsconfig\.tsbuildinfo|bun\.lock|test\/)/.test(f));
-          console.log('PACK|internal_or_runtime_files='+internal.length);
-          console.log(internal.join('\n'));
-          console.log('PACK|has_bin='+paths.includes('bin/agentshield.mjs'));
+          console.log('PACK|files_list='+p.files.map(f=>f.path).join(','));
           "
           mkdir -p "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer" && npm init -y > /dev/null 2>&1
           START=$(date +%s)
-          npm i "$GITHUB_WORKSPACE"/agentshield-*.tgz --no-audit --no-fund 2>&1 | tail -n 5
+          npm i "$GITHUB_WORKSPACE"/packages/cli/agentshield-*.tgz --no-audit --no-fund 2>&1 | tail -n 3
           echo "PACK|consumer_install_seconds=$(( $(date +%s) - START ))"
           echo "PACK|consumer_node_modules=$(du -sh node_modules | cut -f1) top_level_packages=$(ls node_modules | wc -l)"
           npx --no-install agentshield version
@@ -277,6 +279,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           echo "HYGIENE|committed runtime/build artifacts:"
           git ls-files | grep -E '^(\.agentshield/|\.test-workspace/)|tsbuildinfo$|(^|/)\.env$'
+          echo "HYGIENE|root bin vs packages/cli copy identical: $(cmp -s bin/agentshield.mjs packages/cli/bin/agentshield.mjs && echo yes || echo NO)"
           echo "HYGIENE|.gitignore:"; cat .gitignore
           echo "HYGIENE|license file:"; ls LICENSE* 2>&1 | head -n 2
           echo "HYGIENE|lockfiles:"; ls bun.lock package-lock.json
