@@ -98,62 +98,99 @@ jobs:
           echo "SMOKE|server log tail:"
           tail -n 25 "$RUNNER_TEMP/server.log"
 
-      - name: Monetization-readiness probes (license and billing)
+      - name: Retest - license, billing and auth fixes
         id: monetize
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
           set +e
           cd "$GITHUB_WORKSPACE"
-          export NODE_ENV=production WEBHOOK_SECRET=ci-secret AGENTSHIELD_SECRET=ci-secret
-          unset DODO_WEBHOOK_SECRET LICENSE_SIGNING_PRIVATE_KEY DODO_PAYMENTS_API_KEY DODO_PAYMENTS_MODE
+          export NODE_ENV=production WEBHOOK_SECRET=ci-secret AGENTSHIELD_SECRET=ci-secret DODO_WEBHOOK_SECRET=ci-dodo-secret
+          unset DODO_PAYMENTS_API_KEY DODO_PAYMENTS_MODE DATABASE_URL
+
+          cat > "$RUNNER_TEMP/gen.mjs" <<'EOF'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const k = crypto.generateKeyPairSync('ed25519');
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/pub.pem', k.publicKey.export({type:'spki',format:'pem'}));
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/priv.pem', k.privateKey.export({type:'pkcs8',format:'pem'}));
+          EOF
+          node "$RUNNER_TEMP/gen.mjs"
+          export AGENTSHIELD_LICENSE_PUBLIC_KEY="$(cat "$RUNNER_TEMP/pub.pem")"
+          export LICENSE_SIGNING_PRIVATE_KEY="$(cat "$RUNNER_TEMP/priv.pem")"
 
           cat > "$RUNNER_TEMP/lic.mts" <<'EOF'
           import fs from 'node:fs';
           const m = await import(process.env.GITHUB_WORKSPACE + '/lib/license/index.ts');
           const lic = m.issueSignedLicense({licenseId:'ci-1',plan:'PRO_LIFETIME',customerId:'ci@example.com',organizationId:'org-ci',issuedAt:new Date().toISOString(),maxDevices:5,features:['A']});
-          const sigBytes = Buffer.from(lic.signature,'base64url').length;
-          console.log('MONETIZE|issued_signature_bytes=' + sigBytes + ' (ed25519=64, hmac-sha256-fallback=32)');
           const v = m.verifyLicenseOffline(lic.licenseKey);
-          console.log('MONETIZE|server_issued_license_verifies_with_embedded_public_key=' + v.valid + (v.error ? ' error=' + v.error : ''));
+          console.log('RETEST|server_issue_and_verify_with_matching_keypair|valid=' + v.valid + ' (expect true)');
           fs.writeFileSync(process.env.RUNNER_TEMP + '/issued-key.txt', lic.licenseKey);
+          const noKey = process.env.LICENSE_SIGNING_PRIVATE_KEY;
+          delete process.env.LICENSE_SIGNING_PRIVATE_KEY;
+          try { m.issueSignedLicense({licenseId:'ci-2',plan:'PRO_LIFETIME',customerId:'x',organizationId:'x',issuedAt:new Date().toISOString(),maxDevices:1,features:[]}); console.log('RETEST|issue_without_signing_key|ISSUED (expect throw)'); }
+          catch (e) { console.log('RETEST|issue_without_signing_key|threw (expected)'); }
+          process.env.LICENSE_SIGNING_PRIVATE_KEY = noKey;
           EOF
-          npx tsx "$RUNNER_TEMP/lic.mts" 2>&1 | tail -n 8
+          npx tsx "$RUNNER_TEMP/lic.mts" 2>&1 | grep -E "RETEST|Error" | head -n 6
 
           export HOME="$RUNNER_TEMP/h2"; mkdir -p "$HOME"
-          node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > "$RUNNER_TEMP/cli-activate.txt" 2>&1
-          echo "MONETIZE|cli_activate_with_server_issued_license_exit=$?"
-          sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/cli-activate.txt" | grep -E "Validated|Failed" | head -n 2
+          node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > /dev/null 2>&1
+          echo "RETEST|cli_activate_server_issued_license_with_matching_public_key|exit=$? (expect 0)"
+          env -u AGENTSHIELD_LICENSE_PUBLIC_KEY node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/issued-key.txt")" < /dev/null > /dev/null 2>&1
+          echo "RETEST|cli_activate_same_license_with_embedded_default_key|exit=$? (expect non-zero, embedded key is not yours yet)"
 
-          npx next start -p 3000 > "$RUNNER_TEMP/server2.log" 2>&1 &
-          PID=$!
-          for i in $(seq 1 40); do curl -s -o /dev/null 127.0.0.1:3000/ && break; sleep 1; done
-
-          cat > "$RUNNER_TEMP/forge.mjs" <<'EOF'
+          PORT=3101 npx next start -p 3101 > "$RUNNER_TEMP/server1.log" 2>&1 &
+          for i in $(seq 1 40); do curl -s -o /dev/null 127.0.0.1:3101/ && break; sleep 1; done
+          cat > "$RUNNER_TEMP/chain.mjs" <<'EOF'
           import crypto from 'node:crypto';
           import fs from 'node:fs';
-          const base = 'http://127.0.0.1:3000';
-          const body = JSON.stringify({id:'evt_ci_forged_'+Date.now(),type:'payment.succeeded',created_at:new Date().toISOString(),data:{payment_id:'pay_ci',order_id:'ord_ci',customer:{email:'forger@example.com'},metadata:{organization_id:'org-ci'},total_amount:4900,currency:'USD',status:'succeeded'}});
-          const sig = crypto.createHmac('sha256','whsec_dodo_agentshield_live_942a').update(body).digest('hex');
-          const r = await fetch(base + '/api/billing/webhook/dodo',{method:'POST',headers:{'content-type':'application/json','webhook-signature':sig},body});
-          const j = await r.json().catch(() => ({}));
-          console.log('MONETIZE|forged_webhook_using_repo_default_secret_status=' + r.status + '|license_issued=' + Boolean(j.licenseKey) + '|message=' + (j.message || j.error));
-          if (j.licenseKey) {
-            const a = await fetch(base + '/api/licenses/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({licenseKey:j.licenseKey,deviceId:'ci-device-1',deviceName:'ci',os:'linux'})});
-            const aj = await a.json().catch(() => ({}));
-            console.log('MONETIZE|activate_forged_license_status=' + a.status + '|success=' + Boolean(aj.success) + (aj.error ? '|error=' + aj.error : ''));
-            const l = await fetch(base + '/api/licenses?orgId=org-ci');
-            const lt = await l.text();
-            console.log('MONETIZE|unauthenticated_GET_api_licenses_status=' + l.status + '|response_contains_license_key=' + lt.includes(j.licenseKey));
+          const base = 'http://127.0.0.1:3101';
+          const out = (k, v) => console.log('RETEST|' + k + '|' + v);
+          const evt = (id) => JSON.stringify({id, type:'payment.succeeded', created_at:new Date().toISOString(), data:{payment_id:'pay_'+id, order_id:'ord_'+id, customer:{email:'buyer@example.com'}, metadata:{organization_id:'org-ci'}, total_amount:4900, currency:'USD', status:'succeeded'}});
+          const sign = (secret, body) => crypto.createHmac('sha256', secret).update(body).digest('hex');
+          async function post(p, headers, body) { const r = await fetch(base + p, {method:'POST', headers:{'content-type':'application/json', ...headers}, body}); return {status:r.status, text:await r.text()}; }
+          let b = evt('evt_forged_' + Date.now());
+          let r = await post('/api/billing/webhook/dodo', {'webhook-signature': sign('whsec_dodo_agentshield_live_942a', b)}, b);
+          out('forged_webhook_with_old_default_secret', r.status + ' (expect 401)');
+          b = evt('evt_real_' + Date.now());
+          r = await post('/api/billing/webhook/dodo', {'webhook-signature': sign(process.env.DODO_WEBHOOK_SECRET, b)}, b);
+          out('valid_signed_webhook', r.status + ' response_has_licenseKey=' + /licenseKey/.test(r.text) + ' (expect 200, false)');
+          const dup = await post('/api/billing/webhook/dodo', {'webhook-signature': sign(process.env.DODO_WEBHOOK_SECRET, b)}, b);
+          out('duplicate_event_replay', dup.status + ' ' + dup.text.slice(0, 80));
+          let l = await fetch(base + '/api/licenses?orgId=org-ci');
+          out('GET_api_licenses_without_auth', l.status + ' (expect 401)');
+          l = await fetch(base + '/api/licenses?orgId=org-ci', {headers:{authorization:'Bearer ' + process.env.WEBHOOK_SECRET}});
+          const lj = await l.json().catch(() => ({}));
+          const list = lj.licenses || [];
+          out('GET_api_licenses_with_auth', l.status + ' count=' + list.length + ' first_isValid=' + (list[0] && list[0].isValid) + ' (expect 200, 1, true)');
+          const key = list[0] && list[0].licenseKey;
+          if (key) {
+            const a = await post('/api/licenses/activate', {}, JSON.stringify({licenseKey:key, deviceId:'ci-dev', deviceName:'ci', os:'linux'}));
+            let aj = {}; try { aj = JSON.parse(a.text); } catch {}
+            out('activate_issued_license_via_api', a.status + ' success=' + Boolean(aj.success) + (aj.error ? ' error=' + aj.error : ''));
+            fs.writeFileSync(process.env.RUNNER_TEMP + '/chain-key.txt', key);
           }
-          const bad = await fetch(base + '/api/billing/webhook/dodo',{method:'POST',headers:{'content-type':'application/json','webhook-signature':'deadbeef'},body});
-          console.log('MONETIZE|webhook_with_wrong_signature_status=' + bad.status);
-          const co = await fetch(base + '/api/billing/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customerEmail:'buyer@example.com',customerName:'Buyer'})});
-          const cj = await co.json().catch(() => ({}));
-          console.log('MONETIZE|checkout_status=' + co.status + '|response_keys=' + Object.keys(cj).join(',') + '|checkoutUrl_prefix=' + String(cj.checkoutUrl || '').slice(0,50));
           EOF
-          node "$RUNNER_TEMP/forge.mjs" 2>&1 | tail -n 12
-          kill $PID 2>/dev/null
+          node "$RUNNER_TEMP/chain.mjs" 2>&1 | grep -E "RETEST|Error" 
+          if [ -f "$RUNNER_TEMP/chain-key.txt" ]; then
+            node bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/chain-key.txt")" < /dev/null > /dev/null 2>&1
+            echo "RETEST|cli_activate_license_from_full_payment_chain|exit=$? (expect 0)"
+          fi
+          pkill -f "next start" 2>/dev/null; pkill -f "next-server" 2>/dev/null; sleep 3
+
+          env -u WEBHOOK_SECRET -u AGENTSHIELD_SECRET -u DODO_WEBHOOK_SECRET -u LICENSE_SIGNING_PRIVATE_KEY -u AGENTSHIELD_LICENSE_PUBLIC_KEY npx next start -p 3102 > "$RUNNER_TEMP/server2.log" 2>&1 &
+          for i in $(seq 1 40); do curl -s -o /dev/null 127.0.0.1:3102/ && break; sleep 1; done
+          req2() { local label="$1"; shift; local code; code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$@"); echo "RETEST|no_secrets_in_production|$label=$code"; }
+          J='content-type: application/json'
+          req2 "GET /api/licenses (expect 401)" 127.0.0.1:3102/api/licenses
+          req2 "POST /api/actions/approve (expect 401 or 503)" -X POST -H "$J" -d '{"actionId":"x"}' 127.0.0.1:3102/api/actions/approve
+          req2 "POST /api/actions/propose (expect 401 or 503)" -X POST -H "$J" -d '{}' 127.0.0.1:3102/api/actions/propose
+          req2 "POST /api/webhook (expect 401 or 503)" -X POST -H "$J" -d '{}' 127.0.0.1:3102/api/webhook
+          req2 "POST /api/agents/ping (expect 401 or 503)" -X POST -H "$J" -d '{}' 127.0.0.1:3102/api/agents/ping
+          req2 "POST /api/billing/webhook/dodo (expect 401)" -X POST -H "$J" -H 'webhook-signature: deadbeef' -d '{}' 127.0.0.1:3102/api/billing/webhook/dodo
+          req2 "POST /api/billing/checkout (expect 503)" -X POST -H "$J" -d '{"customerEmail":"b@example.com","customerName":"B"}' 127.0.0.1:3102/api/billing/checkout
+          pkill -f "next start" 2>/dev/null; pkill -f "next-server" 2>/dev/null
 
       - name: Wrapper CLI probes
         id: cli
