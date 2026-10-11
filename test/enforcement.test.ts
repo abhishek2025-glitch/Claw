@@ -6,13 +6,18 @@ import { ApprovalManager } from '../lib/approval/manager';
 import { DurableEventStore } from '../lib/storage/event-store';
 import { redactSecrets } from '../lib/policy/redact';
 import { ActionRequest, computeActionHash } from '../lib/types/action';
+import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
-const testWorkspace = path.join(process.cwd(), '.test-workspace');
-if (!fs.existsSync(testWorkspace)) {
-  fs.mkdirSync(testWorkspace, { recursive: true });
-}
+const testWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agentshield-test-'));
+
+// Clean up temp workspace on process exit
+process.on('exit', () => {
+  try {
+    fs.rmSync(testWorkspace, { recursive: true, force: true });
+  } catch {}
+});
 
 test('1. Safe command evaluates to ALLOW and executes', async () => {
   const policy = new PolicyEngine({ workspaceRoot: testWorkspace });

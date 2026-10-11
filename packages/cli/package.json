@@ -1,0 +1,30 @@
+{
+  "name": "agentshield",
+  "version": "2.1.0",
+  "description": "Universal Agent Activity Monitor, FinOps Tracker & Safety Guardrail Interceptor (Offline-First CLI)",
+  "bin": {
+    "agentshield": "./bin/agentshield.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --version"
+  },
+  "keywords": [
+    "agentshield",
+    "ai-agent",
+    "guardrails",
+    "openclaw",
+    "security",
+    "finops",
+    "interceptor"
+  ],
+  "author": "AgentShield Contributors",
+  "license": "MIT"
+}
