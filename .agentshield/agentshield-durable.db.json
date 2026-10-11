@@ -114,6 +114,42 @@
       "requestedAt": "2026-10-09T11:20:23.368Z",
       "reasonsJson": "[\"Safe test inspection\"]",
       "id": "48f940db-305a-4fee-b935-ca74853ad4fd"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-11T04:06:48.337Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "44dbb67b-5236-40b4-97d4-f8744096b1b9"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-11T04:16:51.962Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "f7af96b0-6291-44cf-9d1a-f42449034d96"
+    },
+    {
+      "organizationId": "org-default",
+      "agentId": "agent-test",
+      "actionType": "EXEC",
+      "operation": "git status",
+      "argumentsJson": "{\"flag\":\"--short\"}",
+      "actionHash": "121a870ec5957d5bdea69595d36717d280105d064102ececd65ef30526f17526",
+      "status": "PENDING_APPROVAL",
+      "requestedAt": "2026-10-11T04:18:14.897Z",
+      "reasonsJson": "[\"Safe test inspection\"]",
+      "id": "b3e090ea-61b8-419f-aefc-8233df24b6f2"
     }
   ],
   "approvals": [],

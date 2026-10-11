@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: result.message,
-      licenseKey: result.licenseKey,
     });
   } catch (error: any) {
     console.error('[Dodo Webhook Route Error]:', error);

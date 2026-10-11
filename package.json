@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx --test test/enforcement.test.ts",
+    "test": "npx tsx --test test/enforcement.test.ts test/license.test.ts",
     "agentshield": "./bin/agentshield.mjs",
     "wrap": "./bin/agentshield.mjs wrap",
     "clean": "next clean"

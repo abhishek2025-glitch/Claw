@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(session);
   } catch (error: any) {
     console.error('[Billing Checkout Route Error]:', error);
-    return NextResponse.json({ error: error.message || 'Checkout creation failed' }, { status: 500 });
+    const status = error.message === 'Payments are not configured' ? 503 : 500;
+    return NextResponse.json({ error: error.message || 'Checkout creation failed' }, { status });
   }
 }

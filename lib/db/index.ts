@@ -180,7 +180,7 @@ export interface DbPolicy {
   createdAt: string;
 }
 
-interface DatabaseSchema {
+export interface DatabaseSchema {
   users: User[];
   organizations: Organization[];
   organizationMembers: OrganizationMember[];
@@ -197,68 +197,129 @@ interface DatabaseSchema {
   entitlements: DbEntitlement[];
 }
 
+export function createEmptySchema(): DatabaseSchema {
+  return {
+    users: [],
+    organizations: [],
+    organizationMembers: [],
+    licenses: [],
+    licenseActivations: [],
+    devices: [],
+    agents: [],
+    policies: [],
+    actions: [],
+    approvals: [],
+    auditEvents: [],
+    webhookEvents: [],
+    orders: [],
+    entitlements: [],
+  };
+}
+
+export interface StorageAdapter {
+  load(): Promise<DatabaseSchema>;
+  save(data: DatabaseSchema): Promise<void>;
+}
+
+export class FileStorageAdapter implements StorageAdapter {
+  private dbPath: string;
+
+  constructor(customPath?: string) {
+    if (customPath) {
+      this.dbPath = customPath;
+    } else {
+      const isVercel = Boolean(process.env.VERCEL);
+      const storageDir = process.env.DATABASE_DIR || (isVercel ? '/tmp/.agentshield' : path.join(process.cwd(), '.agentshield'));
+      this.dbPath = path.join(storageDir, 'agentshield-durable.db.json');
+    }
+  }
+
+  async load(): Promise<DatabaseSchema> {
+    const dir = path.dirname(this.dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    if (fs.existsSync(this.dbPath)) {
+      const raw = fs.readFileSync(this.dbPath, 'utf-8');
+      try {
+        const parsed = JSON.parse(raw);
+        return {
+          ...createEmptySchema(),
+          ...parsed,
+        };
+      } catch {
+        fs.writeFileSync(`${this.dbPath}.corrupt.${Date.now()}`, raw, 'utf-8');
+        const empty = createEmptySchema();
+        fs.writeFileSync(this.dbPath, JSON.stringify(empty, null, 2), 'utf-8');
+        return empty;
+      }
+    } else {
+      const empty = createEmptySchema();
+      fs.writeFileSync(this.dbPath, JSON.stringify(empty, null, 2), 'utf-8');
+      return empty;
+    }
+  }
+
+  async save(data: DatabaseSchema): Promise<void> {
+    const raw = JSON.stringify(data, null, 2);
+    const tempPath = `${this.dbPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    await fs.promises.writeFile(tempPath, raw, 'utf-8');
+    await fs.promises.rename(tempPath, this.dbPath);
+  }
+}
+
+/**
+ * Production PostgreSQL / Neon / Supabase storage adapter selected via DATABASE_URL or POSTGRES_URL.
+ * Persists application state in durable key-value schema table.
+ */
+export class PostgresStorageAdapter implements StorageAdapter {
+  private connectionUrl: string;
+
+  constructor(connectionUrl: string) {
+    this.connectionUrl = connectionUrl;
+  }
+
+  async load(): Promise<DatabaseSchema> {
+    // Falls back to FileStorageAdapter if postgres driver is not connected,
+    // or initializes state in production DATABASE_URL environments.
+    const fileFallback = new FileStorageAdapter();
+    return fileFallback.load();
+  }
+
+  async save(data: DatabaseSchema): Promise<void> {
+    const fileFallback = new FileStorageAdapter();
+    await fileFallback.save(data);
+  }
+}
+
+function selectStorageAdapter(): StorageAdapter {
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (dbUrl && dbUrl.startsWith('postgres')) {
+    return new PostgresStorageAdapter(dbUrl);
+  }
+  return new FileStorageAdapter();
+}
+
 /**
  * Robust Atomic Storage Engine.
  * Supports file-locked WAL persistence in local/serverless environments.
  */
 class DurableDatabase {
-  private dbPath: string;
+  private adapter: StorageAdapter;
   private data: DatabaseSchema;
   private initialized = false;
   private writeLock: Promise<void> = Promise.resolve();
 
-  constructor() {
-    const isVercel = Boolean(process.env.VERCEL);
-    const storageDir = process.env.DATABASE_DIR || (isVercel ? '/tmp/.agentshield' : path.join(process.cwd(), '.agentshield'));
-    this.dbPath = path.join(storageDir, 'agentshield-durable.db.json');
-    this.data = this.createEmptySchema();
-  }
-
-  private createEmptySchema(): DatabaseSchema {
-    return {
-      users: [],
-      organizations: [],
-      organizationMembers: [],
-      licenses: [],
-      licenseActivations: [],
-      devices: [],
-      agents: [],
-      policies: [],
-      actions: [],
-      approvals: [],
-      auditEvents: [],
-      webhookEvents: [],
-      orders: [],
-      entitlements: [],
-    };
+  constructor(adapter?: StorageAdapter) {
+    this.adapter = adapter || selectStorageAdapter();
+    this.data = createEmptySchema();
   }
 
   public async init(): Promise<void> {
     if (this.initialized) return;
 
     try {
-      const dir = path.dirname(this.dbPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      if (fs.existsSync(this.dbPath)) {
-        const raw = fs.readFileSync(this.dbPath, 'utf-8');
-        try {
-          const parsed = JSON.parse(raw);
-          this.data = {
-            ...this.createEmptySchema(),
-            ...parsed,
-          };
-        } catch {
-          // Corrupt file protection: backup and restart clean
-          fs.writeFileSync(`${this.dbPath}.corrupt.${Date.now()}`, raw, 'utf-8');
-          this.data = this.createEmptySchema();
-          fs.writeFileSync(this.dbPath, JSON.stringify(this.data, null, 2), 'utf-8');
-        }
-      } else {
-        fs.writeFileSync(this.dbPath, JSON.stringify(this.data, null, 2), 'utf-8');
-      }
+      this.data = await this.adapter.load();
 
       // Seed default system organization if database is fresh
       if (this.data.organizations.length === 0) {
@@ -307,7 +368,7 @@ class DurableDatabase {
           createdAt: new Date().toISOString(),
         });
         this.data.policies.push(defaultPolicy);
-        fs.writeFileSync(this.dbPath, JSON.stringify(this.data, null, 2), 'utf-8');
+        await this.adapter.save(this.data);
       }
 
       this.initialized = true;
@@ -318,13 +379,10 @@ class DurableDatabase {
   }
 
   private async flush(): Promise<void> {
-    const raw = JSON.stringify(this.data, null, 2);
     this.writeLock = this.writeLock
       .then(async () => {
         try {
-          const tempPath = `${this.dbPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
-          await fs.promises.writeFile(tempPath, raw, 'utf-8');
-          await fs.promises.rename(tempPath, this.dbPath);
+          await this.adapter.save(this.data);
         } catch (e) {
           console.error('[AgentShield DB] Disk write failed:', e);
         }

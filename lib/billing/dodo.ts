@@ -41,17 +41,17 @@ export interface DodoWebhookPayload {
   };
 }
 
-const DODO_WEBHOOK_SECRET = process.env.DODO_WEBHOOK_SECRET || 'whsec_dodo_agentshield_live_942a';
-
 /**
  * Verifies the incoming Dodo Payments webhook signature.
  * Enforces timing-safe comparison to prevent side-channel timing attacks.
+ * Fails closed if DODO_WEBHOOK_SECRET is not configured.
  */
 export function verifyDodoSignature(rawBody: string, signatureHeader: string | null): boolean {
-  if (!signatureHeader) return false;
+  const webhookSecret = process.env.DODO_WEBHOOK_SECRET;
+  if (!webhookSecret || !signatureHeader) return false;
 
   const expectedSignature = crypto
-    .createHmac('sha256', DODO_WEBHOOK_SECRET)
+    .createHmac('sha256', webhookSecret)
     .update(rawBody)
     .digest('hex');
 
@@ -72,9 +72,18 @@ export function verifyDodoSignature(rawBody: string, signatureHeader: string | n
  */
 export async function createDodoCheckout(req: DodoCheckoutSessionRequest): Promise<DodoCheckoutSessionResponse> {
   const apiKey = process.env.DODO_PAYMENTS_API_KEY;
-  const isTest = process.env.DODO_PAYMENTS_MODE === 'test' || !apiKey;
-  const paymentId = `dodo_pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const isProduction = process.env.NODE_ENV === 'production';
 
+  if (!apiKey && isProduction) {
+    throw new Error('Payments are not configured');
+  }
+
+  const isTest = process.env.DODO_PAYMENTS_MODE === 'test';
+  if (!apiKey && !isTest) {
+    throw new Error('Payments are not configured');
+  }
+
+  const paymentId = `dodo_pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const returnUrl = req.returnUrl || `${process.env.APP_URL || 'http://localhost:3000'}/?payment=success&payment_id=${paymentId}`;
 
   // If live Dodo API key is configured, call Dodo Payments API
@@ -112,7 +121,7 @@ export async function createDodoCheckout(req: DodoCheckoutSessionRequest): Promi
     }
   }
 
-  // Standard checkout URL (Direct Dodo checkout or simulated redirect in test environment)
+  // Standard checkout URL (Simulated redirect in explicit test environment)
   const checkoutUrl = `https://test.dodopayments.com/buy/p_agentshield_pro_lifetime?email=${encodeURIComponent(
     req.customerEmail
   )}&metadata_org=${encodeURIComponent(req.organizationId)}&return_url=${encodeURIComponent(returnUrl)}`;
@@ -158,6 +167,19 @@ export async function processDodoWebhook(payload: DodoWebhookPayload): Promise<{
 
   // 3. Dispatch based on event type
   if (eventType === 'payment.succeeded' || eventType === 'order.completed') {
+    // Issue cryptographically signed lifetime license FIRST.
+    // If signing fails (e.g. key missing/misconfigured), throws before any DB records are created,
+    // ensuring clean retries without duplicate orders or entitlements.
+    const issuedLicense = issueSignedLicense({
+      licenseId: `lic-${crypto.randomUUID()}`,
+      plan: 'PRO_LIFETIME',
+      customerId: customerEmail,
+      organizationId: orgId,
+      issuedAt: new Date().toISOString(),
+      maxDevices: 5,
+      features: ['UNLIMITED_AUDIT', 'ZERO_LATENCY_INTERCEPT', 'OPENCLAW_GUARDRAIL', 'OFFLINE_ENFORCE'],
+    });
+
     // Record paid order
     await db.createOrder({
       organizationId: orgId,
@@ -176,17 +198,6 @@ export async function processDodoWebhook(payload: DodoWebhookPayload): Promise<{
       plan: 'PRO_LIFETIME',
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
-    });
-
-    // Issue cryptographically signed lifetime license
-    const issuedLicense = issueSignedLicense({
-      licenseId: `lic-${crypto.randomUUID()}`,
-      plan: 'PRO_LIFETIME',
-      customerId: customerEmail,
-      organizationId: orgId,
-      issuedAt: new Date().toISOString(),
-      maxDevices: 5,
-      features: ['UNLIMITED_AUDIT', 'ZERO_LATENCY_INTERCEPT', 'OPENCLAW_GUARDRAIL', 'OFFLINE_ENFORCE'],
     });
 
     // Save license to authoritative database

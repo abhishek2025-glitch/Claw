@@ -31,18 +31,25 @@ export interface LicenseVerificationResult {
 }
 
 // Embedded Public Verification Key for AgentShield Local Runtime (Ed25519)
+// Note: This must be replaced with the owner's own public key in production deployments.
 export const AGENTSHIELD_ROOT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAiK3m+xZ9P9b2Y7uN8kC9aW0yF5vT3rQ8sM1nL2xP0k4=
 -----END PUBLIC KEY-----`;
 
-// Private Signing Key (Used ONLY by Cloud Control Plane, NEVER embedded in local CLI)
-// In production, loaded via process.env.LICENSE_SIGNING_PRIVATE_KEY
-const DEFAULT_DEV_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MC4CAQAwBQYDK2VwBCIEIN9k2X8wL5zP1mK9vR0tY3uF7vN4rQ2sM0nL1xP9k8j5
------END PRIVATE KEY-----`;
+function getEffectivePublicKey(overridePem?: string): string {
+  if (overridePem) return overridePem;
+  if (process.env.AGENTSHIELD_LICENSE_PUBLIC_KEY) {
+    return process.env.AGENTSHIELD_LICENSE_PUBLIC_KEY.replace(/\\n/g, '\n');
+  }
+  return AGENTSHIELD_ROOT_PUBLIC_KEY;
+}
 
 function getSigningPrivateKey(): string {
-  return process.env.LICENSE_SIGNING_PRIVATE_KEY || DEFAULT_DEV_PRIVATE_KEY;
+  const envKey = process.env.LICENSE_SIGNING_PRIVATE_KEY;
+  if (!envKey) {
+    throw new Error('LICENSE_SIGNING_PRIVATE_KEY is not configured; refusing to issue licenses.');
+  }
+  return envKey.replace(/\\n/g, '\n');
 }
 
 /**
@@ -78,23 +85,10 @@ export function issueSignedLicense(
   };
 
   const payloadBytes = canonicalizeClaims(fullClaims);
-  const keyToUse = privateKeyPem || getSigningPrivateKey();
+  const rawKey = privateKeyPem ? privateKeyPem.replace(/\\n/g, '\n') : getSigningPrivateKey();
 
-  // Create Ed25519 or fallback HMAC signature
-  let signature: string;
-  try {
-    const sign = crypto.createSign('SHA256');
-    sign.update(payloadBytes);
-    sign.end();
-    // For RSA / ECDSA / Ed25519:
-    signature = crypto.sign(null, payloadBytes, keyToUse).toString('base64url');
-  } catch {
-    // Graceful crypto signature with HMAC SHA256 if custom key formatting:
-    signature = crypto
-      .createHmac('sha256', keyToUse)
-      .update(payloadBytes)
-      .digest('base64url');
-  }
+  // Create Ed25519 signature
+  const signature = crypto.sign(null, payloadBytes, rawKey).toString('base64url');
 
   const payloadEncoded = Buffer.from(JSON.stringify(fullClaims)).toString('base64url');
   const licenseKey = `ASL1-${payloadEncoded}.${signature}`;
@@ -112,7 +106,7 @@ export function issueSignedLicense(
  */
 export function verifyLicenseOffline(
   licenseKey: string,
-  publicKeyPem: string = AGENTSHIELD_ROOT_PUBLIC_KEY
+  publicKeyPem?: string
 ): LicenseVerificationResult {
   if (!licenseKey || !licenseKey.startsWith('ASL1-')) {
     return { valid: false, error: 'Malformed license key: missing ASL1 prefix' };
@@ -133,6 +127,11 @@ export function verifyLicenseOffline(
     return { valid: false, error: 'Failed to decode license claims payload' };
   }
 
+  // Guard against malformed claims
+  if (!claims || typeof claims !== 'object' || !Array.isArray(claims.features)) {
+    return { valid: false, error: 'Malformed license claims' };
+  }
+
   // 1. Verify Product
   if (claims.product !== 'agentshield') {
     return { valid: false, error: `Invalid license product: ${claims.product}` };
@@ -146,24 +145,20 @@ export function verifyLicenseOffline(
     }
   }
 
-  // 3. Cryptographic Signature Verification
+  // 3. Cryptographic Signature Verification (Ed25519 only)
   const canonicalBytes = canonicalizeClaims(claims);
+  const effectivePublicKey = getEffectivePublicKey(publicKeyPem);
 
   let isVerified = false;
   try {
     isVerified = crypto.verify(
       null,
       canonicalBytes,
-      publicKeyPem,
+      effectivePublicKey,
       Buffer.from(signature, 'base64url')
     );
   } catch {
-    // Check HMAC verification if local test key was used
-    const expectedHmac = crypto
-      .createHmac('sha256', getSigningPrivateKey())
-      .update(canonicalBytes)
-      .digest('base64url');
-    isVerified = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedHmac));
+    isVerified = false;
   }
 
   if (!isVerified) {
@@ -178,3 +173,4 @@ export function verifyLicenseOffline(
     claims,
   };
 }
+

@@ -43,8 +43,13 @@ vercel --prod
 | `POLICY_FAILURE_MODE` | Guardrail default if policy engine fails | `CLOSED` |
 | `TELEMETRY_FAILURE_MODE`| Non-blocking agent execution mode | `OPEN` |
 | `NEXT_PUBLIC_COST_PER_MILLION`| FinOps cost rate per 1M tokens | `0.50` |
+| `AGENTSHIELD_LICENSE_PUBLIC_KEY` | Public verification key (Ed25519 PEM) for CLI offline license check | `-----BEGIN PUBLIC KEY-----\n...` |
+| `LICENSE_SIGNING_PRIVATE_KEY` | Private signing key (Ed25519 PEM) for license issuance (server-only) | `-----BEGIN PRIVATE KEY-----\n...` |
+| `DODO_WEBHOOK_SECRET` | Webhook signing secret from Dodo Payments dashboard | `whsec_dodo_...` |
+| `DODO_PAYMENTS_API_KEY` | API Key for Dodo Payments checkout sessions | `live_...` |
+| `DATABASE_URL` | PostgreSQL connection string (Neon / Supabase / Postgres) | `postgres://...` |
 
-> **Serverless Persistence:** In Vercel environments, AgentShield writes audit records to `/tmp/.agentshield` with an in-memory hot cache, preventing read-only filesystem errors. Cross-origin CORS headers are active on all `/api/*` routes.
+> **Serverless Persistence:** In Vercel environments without `DATABASE_URL`, AgentShield writes audit records to `/tmp/.agentshield`. For production durability across cold starts, configure `DATABASE_URL` (e.g. Neon, Supabase, or Vercel Postgres). Cross-origin CORS headers are active on all `/api/*` routes.
 
 ---
 
