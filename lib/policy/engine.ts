@@ -175,7 +175,7 @@ export class PolicyEngine {
       { regex: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f\b/i, reason: 'Destructive recursive force deletion command (rm -rf)', id: 'POL-EXEC-RM-RF' },
       { regex: /\bmkfs(?:\.[a-zA-Z0-9]+)?\b/i, reason: 'Direct disk filesystem formatting (mkfs)', id: 'POL-EXEC-MKFS' },
       { regex: /\bdd\s+if=/i, reason: 'Raw device block copy or disk overwrite (dd)', id: 'POL-EXEC-DD' },
-      { regex: />\s*\/dev\/(?:sd[a-z]|nvme[0-9]|hd[a-z]|null|zero)/i, reason: 'Direct raw block device redirection', id: 'POL-EXEC-RAW-DEV' },
+      { regex: />\s*\/dev\/(?:sd[a-z0-9]*|nvme[0-9a-z]*|hd[a-z0-9]*|disk\/[a-zA-Z0-9_-]+|mmcblk[0-9a-z]*)\b/i, reason: 'Direct raw block device redirection', id: 'POL-EXEC-RAW-DEV' },
       { regex: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, reason: 'Fork-bomb denial-of-service attack pattern', id: 'POL-EXEC-FORKBOMB' },
       { regex: /\bwipefs\b/i, reason: 'Filesystem signature eraser (wipefs)', id: 'POL-EXEC-WIPEFS' },
       { regex: /\btruncate\s+-s\s+0\s+\/(?:etc|var|usr)/i, reason: 'System log or directory truncation', id: 'POL-EXEC-TRUNCATE' },
