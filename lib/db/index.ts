@@ -304,7 +304,7 @@ function selectStorageAdapter(): StorageAdapter {
  * Robust Atomic Storage Engine.
  * Supports file-locked WAL persistence in local/serverless environments.
  */
-class DurableDatabase {
+export class DurableDatabase {
   private adapter: StorageAdapter;
   private data: DatabaseSchema;
   private initialized = false;

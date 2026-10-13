@@ -38,8 +38,8 @@ vercel --prod
 
 | Environment Variable | Description | Recommended Production Value |
 |---|---|---|
-| `WEBHOOK_SECRET` | Bearer token for agent telemetry and action authorization | `sec_live_prod_948f2a` |
-| `AGENTSHIELD_SECRET` | Secret for SDK & CLI pre-execution evaluation | `sec_live_prod_948f2a` |
+| `WEBHOOK_SECRET` | Bearer token for agent telemetry and action authorization | `<generate-a-long-random-secret>` |
+| `AGENTSHIELD_SECRET` | Secret for SDK & CLI pre-execution evaluation | `<generate-a-long-random-secret>` |
 | `POLICY_FAILURE_MODE` | Guardrail default if policy engine fails | `CLOSED` |
 | `TELEMETRY_FAILURE_MODE`| Non-blocking agent execution mode | `OPEN` |
 | `NEXT_PUBLIC_COST_PER_MILLION`| FinOps cost rate per 1M tokens | `0.50` |
@@ -48,6 +48,8 @@ vercel --prod
 | `DODO_WEBHOOK_SECRET` | Webhook signing secret from Dodo Payments dashboard | `whsec_dodo_...` |
 | `DODO_PAYMENTS_API_KEY` | API Key for Dodo Payments checkout sessions | `live_...` |
 | `DATABASE_URL` | PostgreSQL connection string (Neon / Supabase / Postgres) | `postgres://...` |
+
+> **Generate a secure secret:** You can generate a random 32-byte secret for `WEBHOOK_SECRET` and `AGENTSHIELD_SECRET` using `openssl rand -hex 32`.
 
 > **Serverless Persistence:** In Vercel environments without `DATABASE_URL`, AgentShield writes audit records to `/tmp/.agentshield`. For production durability across cold starts, configure `DATABASE_URL` (e.g. Neon, Supabase, or Vercel Postgres). Cross-origin CORS headers are active on all `/api/*` routes.
 
@@ -64,14 +66,14 @@ Wrap any agent process without installing any packages globally:
 # Wrap a local Python agent
 npx agentshield wrap \
   --endpoint https://your-shield.vercel.app \
-  --secret sec_live_prod_948f2a \
+  --secret <generate-a-long-random-secret> \
   --agent "Hermes-Production" \
   -- python agent.py
 
 # Wrap an OpenClaw or AutoGPT agent in strict safety mode
 npx agentshield wrap \
   --endpoint https://your-shield.vercel.app \
-  --secret sec_live_prod_948f2a \
+  --secret <generate-a-long-random-secret> \
   --mode strict \
   -- npx openclaw run
 ```
@@ -82,7 +84,7 @@ Test that your agent machine can reach and authenticate with your live Vercel we
 ```bash
 npx agentshield test-connection \
   --endpoint https://your-shield.vercel.app \
-  --secret sec_live_prod_948f2a
+  --secret <generate-a-long-random-secret>
 ```
 
 ### 3. One-Line Curl Installer (Cloud VMs & CI/CD)
@@ -91,7 +93,7 @@ Run directly from AWS EC2, GCP Compute Engine, Kubernetes, or GitHub Actions:
 ```bash
 curl -sSL https://your-shield.vercel.app/api/cli/install.sh | bash -s -- wrap \
   --endpoint https://your-shield.vercel.app \
-  --secret sec_live_prod_948f2a \
+  --secret <generate-a-long-random-secret> \
   -- python3 agent.py
 ```
 
@@ -103,7 +105,7 @@ from agentshield_client import AgentShieldClient
 
 shield = AgentShieldClient(
     endpoint_url="https://your-shield.vercel.app",
-    api_secret="sec_live_prod_948f2a",
+    api_secret="<generate-a-long-random-secret>",
     agent_name="Hermes-Worker",
     policy_failure_mode="CLOSED"
 )
