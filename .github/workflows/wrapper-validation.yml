@@ -177,6 +177,16 @@ jobs:
             node packages/cli/bin/agentshield.mjs activate "$(cat "$RUNNER_TEMP/chain-key.txt")" < /dev/null > /dev/null 2>&1
             echo "RETEST|cli_activate_license_from_full_payment_chain|exit=$? (expect 0)"
           fi
+          CLIP="node packages/cli/bin/agentshield.mjs"
+          $CLIP test-connection --endpoint http://127.0.0.1:3101 --secret ci-secret < /dev/null > "$RUNNER_TEMP/tc-ok.txt" 2>&1
+          echo "RETEST|test_connection_valid_secret|exit=$? (expect 0)"
+          $CLIP test-connection --endpoint http://127.0.0.1:3101 --secret wrong-secret < /dev/null > "$RUNNER_TEMP/tc-bad.txt" 2>&1
+          echo "RETEST|test_connection_wrong_secret|exit=$? (expect 1)"
+          echo "RETEST|metrics_before=$(curl -s -H 'authorization: Bearer ci-secret' 127.0.0.1:3101/api/metrics | head -c 160)"
+          $CLIP wrap --endpoint http://127.0.0.1:3101 --secret ci-secret --agent TelemetryProbe -- node -e "console.log('hello telemetry')" < /dev/null > "$RUNNER_TEMP/telemetry.txt" 2>&1
+          echo "RETEST|wrap_with_endpoint_exit=$?"
+          sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/telemetry.txt" | grep -iE "telemetry|sync|flush|upload|queue" | head -n 4
+          echo "RETEST|metrics_after=$(curl -s -H 'authorization: Bearer ci-secret' 127.0.0.1:3101/api/metrics | head -c 160)"
           pkill -f "next start" 2>/dev/null; pkill -f "next-server" 2>/dev/null; sleep 3
 
           env -u WEBHOOK_SECRET -u AGENTSHIELD_SECRET -u DODO_WEBHOOK_SECRET -u LICENSE_SIGNING_PRIVATE_KEY -u AGENTSHIELD_LICENSE_PUBLIC_KEY npx next start -p 3102 > "$RUNNER_TEMP/server2.log" 2>&1 &
@@ -228,6 +238,18 @@ jobs:
           probe "gate-ls" $CLI gate -- ls
           probe "gate-rm-rf" $CLI gate -- rm -rf "$RUNNER_TEMP/gate-probe-dir"
           if [ -d "$RUNNER_TEMP/gate-probe-dir" ]; then echo "PROBE_RESULT|gate-rm-rf-dir-still-exists|yes"; else echo "PROBE_RESULT|gate-rm-rf-dir-still-exists|NO (deleted)"; fi
+          probe "wrap-audit-rm-rf" $CLI wrap --mode audit -- node -e "console.log('rm -rf /'); setTimeout(function(){console.log('AGENT SURVIVED AUDIT')},1500)"
+          probe "wrap-dd-sda-blocked" $CLI wrap -- node -e "console.log('dd if=/dev/zero of=/dev/sda')"
+          mkdir -p "$RUNNER_TEMP/shim-probe"
+          probe "wrap-shim-blocks-rm-via-shell" $CLI wrap -- node -e "try{require('child_process').execSync('rm -rf '+process.env.RUNNER_TEMP+'/shim-probe',{stdio:'inherit'})}catch(e){console.log('rm command failed: '+e.status)}"
+          if [ -d "$RUNNER_TEMP/shim-probe" ]; then echo "PROBE_RESULT|shim-probe-dir-still-exists|yes (blocked)"; else echo "PROBE_RESULT|shim-probe-dir-still-exists|NO (deleted)"; fi
+          echo 'not json at all' > "$RUNNER_TEMP/bad-policy.json"
+          probe "policy-validate-garbage-file" $CLI policy validate "$RUNNER_TEMP/bad-policy.json"
+          echo '{"rules":[{"name":"bad","pattern":"(unclosed"}]}' > "$RUNNER_TEMP/bad-regex-policy.json"
+          probe "policy-validate-bad-regex-file" $CLI policy validate "$RUNNER_TEMP/bad-regex-policy.json"
+          probe "test-connection-unreachable" $CLI test-connection --endpoint http://127.0.0.1:3999 --secret x
+          probe "approve-nonexistent" $CLI approve nonexistent-id --yes
+          probe "approvals" $CLI approvals
 
           echo "::group::PROBE silent-action-outside-workspace"
           rm -f "$RUNNER_TEMP/outside-marker"
@@ -280,6 +302,7 @@ jobs:
           echo "HYGIENE|committed runtime/build artifacts:"
           git ls-files | grep -E '^(\.agentshield/|\.test-workspace/)|tsbuildinfo$|(^|/)\.env$'
           echo "HYGIENE|root bin vs packages/cli copy identical: $(cmp -s bin/agentshield.mjs packages/cli/bin/agentshield.mjs && echo yes || echo NO)"
+          echo "HYGIENE|vercel.json:"; cat vercel.json
           echo "HYGIENE|.gitignore:"; cat .gitignore
           echo "HYGIENE|license file:"; ls LICENSE* 2>&1 | head -n 2
           echo "HYGIENE|lockfiles:"; ls bun.lock package-lock.json
